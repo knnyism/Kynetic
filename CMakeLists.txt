@@ -95,11 +95,16 @@ set(ENGINE_SOURCES
         src/Engine/Core/App.h
         src/Engine/Core/Window.cpp
         src/Engine/Core/Window.h
+        src/Engine/Renderer/Renderer.cpp
+        src/Engine/Renderer/Renderer.h
+        src/Engine/Renderer/Swapchain.cpp
+        src/Engine/Renderer/Swapchain.h
 )
 
-add_executable(kynetic src/main.cpp
-        src/pch.h
-        ${ENGINE_SOURCES})
+add_executable(kynetic
+        src/main.cpp
+        ${ENGINE_SOURCES}
+)
 
 target_link_libraries(kynetic PRIVATE
         glfw

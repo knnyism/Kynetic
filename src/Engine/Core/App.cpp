@@ -2,37 +2,14 @@
 // Created by kenny on 7/1/25.
 //
 
-#include "Engine/Core/App.h"
+#include "Window.h"
+#include "App.h"
 
 namespace Kynetic {
+
     constexpr int MAX_FRAMES_IN_FLIGHT = 3;
-    GLFWwindow* App::CreateWindowGlfw() {
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        return glfwCreateWindow(1024, 1024, "Kynetic", nullptr, nullptr);
-    }
-
-    void App::DestroyWindowGlfw() const {
-        glfwDestroyWindow(window);
-        glfwTerminate();
-    }
-
-    VkSurfaceKHR App::CreateSurfaceGlfw(VkInstance instance, GLFWwindow* window, const VkAllocationCallbacks* allocator) {
-        VkSurfaceKHR surface = VK_NULL_HANDLE;
-        if (glfwCreateWindowSurface(instance, window, allocator, &surface) != VK_SUCCESS) {
-            const char* errorMessage;
-            if (int result = glfwGetError(&errorMessage); result != 0) {
-                std::println("{} {}", result, errorMessage);
-            }
-            surface = VK_NULL_HANDLE;
-        }
-        return surface;
-    }
 
     int App::InitializeDeviceVulkan() {
-        window = CreateWindowGlfw();
-
         vkb::InstanceBuilder instanceBuilder;
         auto instanceResult = instanceBuilder.use_default_debug_messenger().request_validation_layers().build();
         if (!instanceResult) {
@@ -43,7 +20,7 @@ namespace Kynetic {
 
         instanceDispatch = instance.make_table();
 
-        surface = CreateSurfaceGlfw(instance, window, nullptr);
+        surface = m_window->create_surface(instance, nullptr);
 
         vkb::PhysicalDeviceSelector physicalDeviceSelector(instance);
         auto physicalDeviceResult = physicalDeviceSelector.set_surface(surface).select();
@@ -540,7 +517,11 @@ namespace Kynetic {
         vkb::destroy_device(device);
         vkb::destroy_surface(instance, surface);
         vkb::destroy_instance(instance);
-        DestroyWindowGlfw();
+    }
+
+    App::App() {
+        m_window =
+            std::make_unique<Window>(1024, 768, "Kynetic");
     }
 
     void App::Start() {
@@ -549,7 +530,7 @@ namespace Kynetic {
         InitializeVulkan(data);
         InitializeImGui(data);
 
-        while (!glfwWindowShouldClose(window)) {
+        while (!m_window->should_close()) {
             glfwPollEvents();
 
             ImGui_ImplVulkan_NewFrame();
@@ -639,7 +620,7 @@ namespace Kynetic {
         style.Colors[ImGuiCol_NavWindowingDimBg]         = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
         style.Colors[ImGuiCol_ModalWindowDimBg]          = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
 
-        ImGui_ImplGlfw_InitForVulkan(window, true);
+        ImGui_ImplGlfw_InitForVulkan(m_window->get_handle(), true);
 
         ImGui_ImplVulkan_InitInfo initInfo{};
         initInfo.ApiVersion = instance.api_version;

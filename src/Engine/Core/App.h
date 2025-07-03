@@ -3,6 +3,7 @@
 //
 
 #pragma once
+#include "Window.h"
 
 struct RenderData {
     VkQueue graphicsQueue;
@@ -27,39 +28,41 @@ struct RenderData {
 };
 
 namespace Kynetic {
-    class App {
-    public:
-        void Start();
-    private:
-        GLFWwindow* window{};
-        vkb::Instance instance;
-        vkb::InstanceDispatchTable instanceDispatch;
-        VkSurfaceKHR surface{};
-        vkb::Device device;
-        vkb::DispatchTable dispatch;
-        vkb::Swapchain swapchain;
 
-        static GLFWwindow *CreateWindowGlfw();
-        void DestroyWindowGlfw() const;
-        [[nodiscard]] static VkSurfaceKHR CreateSurfaceGlfw(VkInstance instance, GLFWwindow *window, const VkAllocationCallbacks *allocator) ;
+class App {
+public:
+    App();
 
-        int InitializeDeviceVulkan();
-        int CreateSwapchainVulkan();
-        int GetQueuesVulkan(RenderData &data) const;
-        int CreateRenderPassVulkan(RenderData &data) const;
-        [[nodiscard]] VkShaderModule CreateShaderModuleVulkan(const std::vector<char> &code) const;
-        int CreateGraphicsPipelineVulkan(RenderData &data) const;
-        int CreateFramebuffersVulkan(RenderData &data);
-        int CreateCommandPoolVulkan(RenderData &data) const;
-        int CreateCommandBuffersVulkan(RenderData &data) const;
-        int CreateSyncObjectsVulkan(RenderData &data) const;
-        int RecreateSwapchainVulkan(RenderData &data);
+    void Start();
+private:
+    std::unique_ptr<Window> m_window;
 
-        int DrawFrame(RenderData &data);
+    GLFWwindow* window{};
+    vkb::Instance instance;
+    vkb::InstanceDispatchTable instanceDispatch;
+    VkSurfaceKHR surface{};
+    vkb::Device device;
+    vkb::DispatchTable dispatch;
+    vkb::Swapchain swapchain;
 
-        int InitializeVulkan(RenderData &data);
-        void InitializeImGui(const RenderData &data) const;
+    int InitializeDeviceVulkan();
+    int CreateSwapchainVulkan();
+    int GetQueuesVulkan(RenderData &data) const;
+    int CreateRenderPassVulkan(RenderData &data) const;
+    [[nodiscard]] VkShaderModule CreateShaderModuleVulkan(const std::vector<char> &code) const;
+    int CreateGraphicsPipelineVulkan(RenderData &data) const;
+    int CreateFramebuffersVulkan(RenderData &data);
+    int CreateCommandPoolVulkan(RenderData &data) const;
+    int CreateCommandBuffersVulkan(RenderData &data) const;
+    int CreateSyncObjectsVulkan(RenderData &data) const;
+    int RecreateSwapchainVulkan(RenderData &data);
 
-        void Cleanup(const RenderData& renderData);
-    };
+    int DrawFrame(RenderData &data);
+
+    int InitializeVulkan(RenderData &data);
+    void InitializeImGui(const RenderData &data) const;
+
+    void Cleanup(const RenderData& renderData);
+};
+
 } // Kynetic
