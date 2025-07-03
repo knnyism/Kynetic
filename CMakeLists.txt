@@ -1,13 +1,24 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.12)
 project(kynetic)
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
 
 include(FetchContent)
+
+# glfw
+option(GLFW_BUILD_TESTS "" OFF)
+option(GLFW_BUILD_DOCS "" OFF)
+option(GLFW_INSTALL "" OFF)
+option(GLFW_BUILD_EXAMPLES "" OFF)
+FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw
+        GIT_TAG 3.3.10
+)
+FetchContent_MakeAvailable(glfw)
 
 # vk-bootstrap
 FetchContent_Declare(
@@ -16,6 +27,7 @@ FetchContent_Declare(
         GIT_TAG v1.4.319
 )
 FetchContent_MakeAvailable(vk-bootstrap)
+
 
 # ImGui (docking)
 FetchContent_Declare(
@@ -83,12 +95,13 @@ add_executable(kynetic Source/main.cpp
         ${ENGINE_SOURCES})
 
 target_link_libraries(kynetic PRIVATE
-        Vulkan::Vulkan
         glfw
-        vk-bootstrap::vk-bootstrap
+        vk-bootstrap
+        vk-bootstrap-compiler-warnings
+        Vulkan::Headers
         imgui
         imguizmo
-        fastgltf::fastgltf
+        fastgltf
 )
 
 target_compile_features(kynetic PRIVATE cxx_std_26)
@@ -101,9 +114,14 @@ target_precompile_headers(kynetic PRIVATE
         <pch.h>
 )
 
+target_compile_definitions(kynetic PRIVATE
+        KYNETIC_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
 if (WIN32)
     target_compile_definitions(kynetic PRIVATE VK_USE_PLATFORM_WIN32_KHR)
 elseif (UNIX AND NOT APPLE)
+    target_link_libraries(kynetic PUBLIC ${CMAKE_DL_LIBS})
     target_compile_definitions(kynetic PRIVATE VK_USE_PLATFORM_XLIB_KHR)
 elseif (APPLE)
     target_compile_definitions(kynetic PRIVATE VK_USE_PLATFORM_MACOS_MVK)
