@@ -1,5 +1,6 @@
-
-#include "Engine/App.h"
+//
+// Created by kenny on 3-7-25.
+//
 
 std::vector<char> ReadFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -19,14 +20,4 @@ std::vector<char> ReadFile(const std::string& filename) {
     file.close();
 
     return buffer;
-}
-
-int main() {
-    auto *app = new Kynetic::App();
-
-    app->Start();
-
-    delete app;
-
-    return 0;
 }

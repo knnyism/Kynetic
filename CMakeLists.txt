@@ -88,10 +88,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fastgltf)
 
-file(GLOB_RECURSE ENGINE_SOURCES "Source/**/*.cpp")
+set(ENGINE_SOURCES
+        src/pch.cpp
+        src/pch.h
+        src/Engine/Core/App.cpp
+        src/Engine/Core/App.h
+        src/Engine/Core/Window.cpp
+        src/Engine/Core/Window.h
+)
 
-add_executable(kynetic Source/main.cpp
-        Include/pch.h
+add_executable(kynetic src/main.cpp
+        src/pch.h
         ${ENGINE_SOURCES})
 
 target_link_libraries(kynetic PRIVATE
@@ -107,11 +114,11 @@ target_link_libraries(kynetic PRIVATE
 target_compile_features(kynetic PRIVATE cxx_std_26)
 
 target_include_directories(kynetic PRIVATE
-        Include
+        src
 )
 
 target_precompile_headers(kynetic PRIVATE
-        <pch.h>
+        "src/pch.h"
 )
 
 target_compile_definitions(kynetic PRIVATE

@@ -62,4 +62,4 @@ namespace Kynetic {
 
         void Cleanup(const RenderData& renderData);
     };
-}
+} // Kynetic
