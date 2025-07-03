@@ -4,13 +4,16 @@
 
 #include "Engine/App.h"
 
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+
 constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
 GLFWwindow* Kynetic::App::CreateWindowGlfw() {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    return glfwCreateWindow(1024, 1024, "Kynetic", NULL, NULL);
+    return glfwCreateWindow(1024, 1024, "Kynetic", nullptr, nullptr);
 }
 
 void Kynetic::App::DestroyWindowGlfw() const {
@@ -18,13 +21,12 @@ void Kynetic::App::DestroyWindowGlfw() const {
     glfwTerminate();
 }
 
-VkSurfaceKHR Kynetic::App::CreateSurfaceGlfw(VkInstance instance, GLFWwindow* window, VkAllocationCallbacks* allocator = nullptr) const {
+VkSurfaceKHR Kynetic::App::CreateSurfaceGlfw(VkInstance instance, GLFWwindow* window, const VkAllocationCallbacks* allocator) {
     VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkResult err = glfwCreateWindowSurface(instance, window, allocator, &surface);
-    if (err) {
-        const char* error_msg;
-        int ret = glfwGetError(&error_msg);
-        if (ret != 0) {
+    if (glfwCreateWindowSurface(instance, window, allocator, &surface) != VK_SUCCESS) {
+        const char* errorMessage;
+        if (int result = glfwGetError(&errorMessage); result != 0) {
+            std::println("{} {}", result, errorMessage);
         }
         surface = VK_NULL_HANDLE;
     }
@@ -34,81 +36,90 @@ VkSurfaceKHR Kynetic::App::CreateSurfaceGlfw(VkInstance instance, GLFWwindow* wi
 int Kynetic::App::InitializeDeviceVulkan() {
     window = CreateWindowGlfw();
 
-    vkb::InstanceBuilder instance_builder;
-    auto instance_ret = instance_builder.use_default_debug_messenger().request_validation_layers().build();
-    if (!instance_ret) {
+    vkb::InstanceBuilder instanceBuilder;
+    auto instanceResult = instanceBuilder.use_default_debug_messenger().request_validation_layers().build();
+    if (!instanceResult) {
+        std::println("{}", instanceResult.error().message());
         return -1;
     }
-    instance = instance_ret.value();
+    instance = instanceResult.value();
 
-    inst_disp = instance.make_table();
+    instanceDispatch = instance.make_table();
 
-    surface = CreateSurfaceGlfw(instance, window);
+    surface = CreateSurfaceGlfw(instance, window, nullptr);
 
-    vkb::PhysicalDeviceSelector phys_device_selector(instance);
-    auto phys_device_ret = phys_device_selector.set_surface(surface).select();
-    if (!phys_device_ret) {
+    vkb::PhysicalDeviceSelector physicalDeviceSelector(instance);
+    auto physicalDeviceResult = physicalDeviceSelector.set_surface(surface).select();
+    if (!physicalDeviceResult) {
+        std::println("{}", physicalDeviceResult.error().message());
         return -1;
     }
-    vkb::PhysicalDevice physical_device = phys_device_ret.value();
 
-    vkb::DeviceBuilder device_builder{ physical_device };
-    auto device_ret = device_builder.build();
-    if (!device_ret) {
+    vkb::DeviceBuilder deviceBuilder(physicalDeviceResult.value());
+    auto deviceResult = deviceBuilder.build();
+    if (!deviceResult) {
+        std::println("{}", deviceResult.error().message());
         return -1;
     }
-    device = device_ret.value();
+    device = deviceResult.value();
 
-    disp = device.make_table();
+    dispatch = device.make_table();
 
     return 0;
 }
 
 int Kynetic::App::CreateSwapchainVulkan() {
-    vkb::SwapchainBuilder swapchain_builder{ device };
-    auto swap_ret = swapchain_builder.set_old_swapchain(swapchain).build();
-    if (!swap_ret) {
+    vkb::SwapchainBuilder swapchainBuilder(device);
+    auto swapchainResult = swapchainBuilder
+        .set_old_swapchain(swapchain)
+        .build();
+    if (!swapchainResult) {
+        std::println("{} {}", swapchainResult.error().message(), static_cast<int>(swapchainResult.vk_result()));
         return -1;
     }
     vkb::destroy_swapchain(swapchain);
-    swapchain = swap_ret.value();
+    swapchain = swapchainResult.value();
+
     return 0;
 }
 
 int Kynetic::App::GetQueuesVulkan(RenderData& data) const {
-    auto gq = device.get_queue(vkb::QueueType::graphics);
-    if (!gq.has_value()) {
+    auto graphicsQueueResult = device.get_queue(vkb::QueueType::graphics);
+    if (!graphicsQueueResult.has_value()) {
+        std::println("Failed to get graphics queue: {}", graphicsQueueResult.error().message());
         return -1;
     }
-    data.graphics_queue = gq.value();
+    data.graphicsQueue = graphicsQueueResult.value();
 
-    auto pq = device.get_queue(vkb::QueueType::present);
-    if (!pq.has_value()) {
+    auto presentQueueResult = device.get_queue(vkb::QueueType::present);
+    if (!presentQueueResult.has_value()) {
+        std::println("Failed to get present queue: {}", presentQueueResult.error().message());
         return -1;
     }
-    data.present_queue = pq.value();
+    data.presentQueue = presentQueueResult.value();
+
     return 0;
 }
 
 int Kynetic::App::CreateRenderPassVulkan(RenderData& data) const {
-    VkAttachmentDescription color_attachment = {};
-    color_attachment.format = swapchain.image_format;
-    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkAttachmentDescription colorAttachment = {};
+    colorAttachment.format = swapchain.image_format;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    VkAttachmentReference color_attachment_ref = {};
-    color_attachment_ref.attachment = 0;
-    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference colorAttachmentRef = {};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass = {};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment_ref;
+    subpass.pColorAttachments = &colorAttachmentRef;
 
     VkSubpassDependency dependency = {};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -118,74 +129,77 @@ int Kynetic::App::CreateRenderPassVulkan(RenderData& data) const {
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    VkRenderPassCreateInfo render_pass_info = {};
-    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_info.attachmentCount = 1;
-    render_pass_info.pAttachments = &color_attachment;
-    render_pass_info.subpassCount = 1;
-    render_pass_info.pSubpasses = &subpass;
-    render_pass_info.dependencyCount = 1;
-    render_pass_info.pDependencies = &dependency;
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
 
-    if (disp.createRenderPass(&render_pass_info, nullptr, &data.render_pass) != VK_SUCCESS) {
-        return -1; // failed to create render pass!
+    if (dispatch.createRenderPass(&renderPassInfo, nullptr, &data.renderPass) != VK_SUCCESS) {
+        std::println("Failed to create render pass");
+        return -1;
     }
+
     return 0;
 }
 
 VkShaderModule Kynetic::App::CreateShaderModuleVulkan(const std::vector<char>& code) const {
-    VkShaderModuleCreateInfo create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    create_info.codeSize = code.size();
-    create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    VkShaderModuleCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    if (disp.createShaderModule(&create_info, nullptr, &shaderModule) != VK_SUCCESS) {
-        return VK_NULL_HANDLE; // failed to create shader module
+    if (dispatch.createShaderModule(&createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
     }
 
     return shaderModule;
 }
 
 int Kynetic::App::CreateGraphicsPipelineVulkan(RenderData& data) const {
-    auto vert_code = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/Assets/Shaders/triangle.vert.spv");
-    auto frag_code = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/Assets/Shaders/triangle.frag.spv");
+    auto vertCode = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/Assets/Shaders/triangle.vert.spv");
+    auto fragCode = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/Assets/Shaders/triangle.frag.spv");
 
-     VkShaderModule vert_module = CreateShaderModuleVulkan(vert_code);
-    VkShaderModule frag_module = CreateShaderModuleVulkan(frag_code);
-    if (vert_module == VK_NULL_HANDLE || frag_module == VK_NULL_HANDLE) {
-        return -1; // failed to create shader modules
+    VkShaderModule vertModule = CreateShaderModuleVulkan(vertCode);
+    VkShaderModule fragModule = CreateShaderModuleVulkan(fragCode);
+    if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
+        std::println("Failed to create shader modules");
+        return -1;
     }
 
-    VkPipelineShaderStageCreateInfo vert_stage_info = {};
-    vert_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vert_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vert_stage_info.module = vert_module;
-    vert_stage_info.pName = "main";
+    VkPipelineShaderStageCreateInfo vertStageInfo = {};
+    vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertStageInfo.module = vertModule;
+    vertStageInfo.pName = "main";
 
-    VkPipelineShaderStageCreateInfo frag_stage_info = {};
-    frag_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    frag_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    frag_stage_info.module = frag_module;
-    frag_stage_info.pName = "main";
+    VkPipelineShaderStageCreateInfo fragStageInfo = {};
+    fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragStageInfo.module = fragModule;
+    fragStageInfo.pName = "main";
 
-    VkPipelineShaderStageCreateInfo shader_stages[] = { vert_stage_info, frag_stage_info };
+    VkPipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-    VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
-    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 0;
+    vertexInputInfo.vertexAttributeDescriptionCount = 0;
 
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
-    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    input_assembly.primitiveRestartEnable = VK_FALSE;
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport = {};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float)swapchain.extent.width;
-    viewport.height = (float)swapchain.extent.height;
+    viewport.width = static_cast<float>(swapchain.extent.width);
+    viewport.height = static_cast<float>(swapchain.extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
@@ -193,12 +207,12 @@ int Kynetic::App::CreateGraphicsPipelineVulkan(RenderData& data) const {
     scissor.offset = { 0, 0 };
     scissor.extent = swapchain.extent;
 
-    VkPipelineViewportStateCreateInfo viewport_state = {};
-    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewport_state.viewportCount = 1;
-    viewport_state.pViewports = &viewport;
-    viewport_state.scissorCount = 1;
-    viewport_state.pScissors = &scissor;
+    VkPipelineViewportStateCreateInfo viewportState = {};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -220,177 +234,140 @@ int Kynetic::App::CreateGraphicsPipelineVulkan(RenderData& data) const {
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
-    VkPipelineColorBlendStateCreateInfo color_blending = {};
-    color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    color_blending.logicOpEnable = VK_FALSE;
-    color_blending.logicOp = VK_LOGIC_OP_COPY;
-    color_blending.attachmentCount = 1;
-    color_blending.pAttachments = &colorBlendAttachment;
-    color_blending.blendConstants[0] = 0.0f;
-    color_blending.blendConstants[1] = 0.0f;
-    color_blending.blendConstants[2] = 0.0f;
-    color_blending.blendConstants[3] = 0.0f;
+    VkPipelineColorBlendStateCreateInfo colorBlending = {};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.0f;
+    colorBlending.blendConstants[1] = 0.0f;
+    colorBlending.blendConstants[2] = 0.0f;
+    colorBlending.blendConstants[3] = 0.0f;
 
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {};
-    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pushConstantRangeCount = 0;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-    if (disp.createPipelineLayout(&pipeline_layout_info, nullptr, &data.pipeline_layout) != VK_SUCCESS) {
-        return -1; // failed to create pipeline layout
-    }
-
-    std::vector<VkDynamicState> dynamic_states = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-
-    VkPipelineDynamicStateCreateInfo dynamic_info = {};
-    dynamic_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_info.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
-    dynamic_info.pDynamicStates = dynamic_states.data();
-
-    VkGraphicsPipelineCreateInfo pipeline_info = {};
-    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipeline_info.stageCount = 2;
-    pipeline_info.pStages = shader_stages;
-    pipeline_info.pVertexInputState = &vertex_input_info;
-    pipeline_info.pInputAssemblyState = &input_assembly;
-    pipeline_info.pViewportState = &viewport_state;
-    pipeline_info.pRasterizationState = &rasterizer;
-    pipeline_info.pMultisampleState = &multisampling;
-    pipeline_info.pColorBlendState = &color_blending;
-    pipeline_info.pDynamicState = &dynamic_info;
-    pipeline_info.layout = data.pipeline_layout;
-    pipeline_info.renderPass = data.render_pass;
-    pipeline_info.subpass = 0;
-    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
-
-    if (disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &data.graphics_pipeline) != VK_SUCCESS) {
+    if (dispatch.createPipelineLayout(&pipelineLayoutInfo, nullptr, &data.pipelineLayout) != VK_SUCCESS) {
+        std::println("Failed to create pipeline layout");
         return -1;
     }
 
-    disp.destroyShaderModule(frag_module, nullptr);
-    disp.destroyShaderModule(vert_module, nullptr);
+    std::vector<VkDynamicState> dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+    VkPipelineDynamicStateCreateInfo dynamicInfo = {};
+    dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicInfo.pDynamicStates = dynamicStates.data();
+
+    VkGraphicsPipelineCreateInfo pipelineInfo = {};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicInfo;
+    pipelineInfo.layout = data.pipelineLayout;
+    pipelineInfo.renderPass = data.renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+
+    if (dispatch.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &data.graphicsPipeline) != VK_SUCCESS) {
+        std::println("Failed to create graphics pipeline");
+        return -1;
+    }
+
+    dispatch.destroyShaderModule(fragModule, nullptr);
+    dispatch.destroyShaderModule(vertModule, nullptr);
+
     return 0;
 }
 
 int Kynetic::App::CreateFramebuffersVulkan(RenderData& data) {
-    data.swapchain_images = swapchain.get_images().value();
-    data.swapchain_image_views = swapchain.get_image_views().value();
+    data.swapchainImages = swapchain.get_images().value();
+    data.swapchainImageViews = swapchain.get_image_views().value();
 
-    data.framebuffers.resize(data.swapchain_image_views.size());
+    data.framebuffers.resize(data.swapchainImageViews.size());
 
-    for (size_t i = 0; i < data.swapchain_image_views.size(); i++) {
-        VkImageView attachments[] = { data.swapchain_image_views[i] };
+    for (size_t i = 0; i < data.swapchainImageViews.size(); i++) {
+        VkImageView attachments[] = { data.swapchainImageViews[i] };
 
-        VkFramebufferCreateInfo framebuffer_info = {};
-        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_info.renderPass = data.render_pass;
-        framebuffer_info.attachmentCount = 1;
-        framebuffer_info.pAttachments = attachments;
-        framebuffer_info.width = swapchain.extent.width;
-        framebuffer_info.height = swapchain.extent.height;
-        framebuffer_info.layers = 1;
+        VkFramebufferCreateInfo framebufferInfo = {};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = data.renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = swapchain.extent.width;
+        framebufferInfo.height = swapchain.extent.height;
+        framebufferInfo.layers = 1;
 
-        if (disp.createFramebuffer(&framebuffer_info, nullptr, &data.framebuffers[i]) != VK_SUCCESS) {
-            return -1; // failed to create framebuffer
+        if (dispatch.createFramebuffer(&framebufferInfo, nullptr, &data.framebuffers[i]) != VK_SUCCESS) {
+            std::println("Failed to create framebuffer");
+            return -1;
         }
     }
+
     return 0;
 }
 
 int Kynetic::App::CreateCommandPoolVulkan(RenderData& data) const {
-    VkCommandPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = device.get_queue_index(vkb::QueueType::graphics).value();
+    VkCommandPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = device.get_queue_index(vkb::QueueType::graphics).value();
 
-    if (disp.createCommandPool(&pool_info, nullptr, &data.command_pool) != VK_SUCCESS) {
-        return -1; // failed to create command pool
+    if (dispatch.createCommandPool(&poolInfo, nullptr, &data.commandPool) != VK_SUCCESS) {
+        std::println("Failed to create command pool");
+        return -1;
     }
+
     return 0;
 }
 
 int Kynetic::App::CreateCommandBuffersVulkan(RenderData& data) const {
-    data.command_buffers.resize(data.framebuffers.size());
+    data.commandBuffers.resize(data.framebuffers.size());
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = data.command_pool;
+    allocInfo.commandPool = data.commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t)data.command_buffers.size();
+    allocInfo.commandBufferCount = static_cast<uint32_t>(data.commandBuffers.size());
 
-    if (disp.allocateCommandBuffers(&allocInfo, data.command_buffers.data()) != VK_SUCCESS) {
-        return -1; // failed to allocate command buffers;
+    if (dispatch.allocateCommandBuffers(&allocInfo, data.commandBuffers.data()) != VK_SUCCESS) {
+        return -1;
     }
 
-    for (size_t i = 0; i < data.command_buffers.size(); i++) {
-        VkCommandBufferBeginInfo begin_info = {};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-        if (disp.beginCommandBuffer(data.command_buffers[i], &begin_info) != VK_SUCCESS) {
-            return -1; // failed to begin recording command buffer
-        }
-
-        VkRenderPassBeginInfo render_pass_info = {};
-        render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        render_pass_info.renderPass = data.render_pass;
-        render_pass_info.framebuffer = data.framebuffers[i];
-        render_pass_info.renderArea.offset = { 0, 0 };
-        render_pass_info.renderArea.extent = swapchain.extent;
-        VkClearValue clearColor{ { { 0.0f, 0.0f, 0.0f, 1.0f } } };
-        render_pass_info.clearValueCount = 1;
-        render_pass_info.pClearValues = &clearColor;
-
-        VkViewport viewport = {};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float)swapchain.extent.width;
-        viewport.height = (float)swapchain.extent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        VkRect2D scissor = {};
-        scissor.offset = { 0, 0 };
-        scissor.extent = swapchain.extent;
-
-        disp.cmdSetViewport(data.command_buffers[i], 0, 1, &viewport);
-        disp.cmdSetScissor(data.command_buffers[i], 0, 1, &scissor);
-
-        disp.cmdBeginRenderPass(data.command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        disp.cmdBindPipeline(data.command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphics_pipeline);
-
-        disp.cmdDraw(data.command_buffers[i], 3, 1, 0, 0);
-
-        disp.cmdEndRenderPass(data.command_buffers[i]);
-
-        if (disp.endCommandBuffer(data.command_buffers[i]) != VK_SUCCESS) {
-            return -1; // failed to record command buffer!
-        }
-    }
     return 0;
 }
 
 int Kynetic::App::CreateSyncObjectsVulkan(RenderData& data) const {
-    data.available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    data.finished_semaphore.resize(swapchain.image_count);
-    data.in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
-    data.image_in_flight.resize(swapchain.image_count, VK_NULL_HANDLE);
+    data.availableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    data.finishedSemaphore.resize(swapchain.image_count);
+    data.inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    data.imageInFlight.resize(swapchain.image_count, VK_NULL_HANDLE);
 
-    VkSemaphoreCreateInfo semaphore_info = {};
-    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphoreCreateInfo semaphoreInfo = {};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    VkFenceCreateInfo fence_info = {};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    VkFenceCreateInfo fenceInfo = {};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < swapchain.image_count; i++) {
-        if (disp.createSemaphore(&semaphore_info, nullptr, &data.finished_semaphore[i]) != VK_SUCCESS) {
+        if (dispatch.createSemaphore(&semaphoreInfo, nullptr, &data.finishedSemaphore[i]) != VK_SUCCESS) {
             return -1; // failed to create synchronization objects for a frame
         }
     }
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (disp.createSemaphore(&semaphore_info, nullptr, &data.available_semaphores[i]) != VK_SUCCESS ||
-            disp.createFence(&fence_info, nullptr, &data.in_flight_fences[i]) != VK_SUCCESS) {
+        if (dispatch.createSemaphore(&semaphoreInfo, nullptr, &data.availableSemaphores[i]) != VK_SUCCESS ||
+            dispatch.createFence(&fenceInfo, nullptr, &data.inFlightFences[i]) != VK_SUCCESS) {
             return -1; // failed to create synchronization objects for a frame
             }
     }
@@ -398,15 +375,15 @@ int Kynetic::App::CreateSyncObjectsVulkan(RenderData& data) const {
 }
 
 int Kynetic::App::RecreateSwapchainVulkan(RenderData& data) {
-    disp.deviceWaitIdle();
+    dispatch.deviceWaitIdle();
 
-    disp.destroyCommandPool(data.command_pool, nullptr);
+    dispatch.destroyCommandPool(data.commandPool, nullptr);
 
     for (auto framebuffer : data.framebuffers) {
-        disp.destroyFramebuffer(framebuffer, nullptr);
+        dispatch.destroyFramebuffer(framebuffer, nullptr);
     }
 
-    swapchain.destroy_image_views(data.swapchain_image_views);
+    swapchain.destroy_image_views(data.swapchainImageViews);
 
     if (0 != CreateSwapchainVulkan()) return -1;
     if (0 != CreateFramebuffersVulkan(data)) return -1;
@@ -417,11 +394,11 @@ int Kynetic::App::RecreateSwapchainVulkan(RenderData& data) {
 }
 
 int Kynetic::App::DrawFrame(RenderData& data) {
-    disp.waitForFences(1, &data.in_flight_fences[data.current_frame], VK_TRUE, UINT64_MAX);
+    dispatch.waitForFences(1, &data.inFlightFences[data.currentFrame], VK_TRUE, UINT64_MAX);
 
-    uint32_t image_index = 0;
-    VkResult result = disp.acquireNextImageKHR(
-        swapchain, UINT64_MAX, data.available_semaphores[data.current_frame], VK_NULL_HANDLE, &image_index);
+    uint32_t imageIndex = 0;
+    VkResult result = dispatch.acquireNextImageKHR(
+        swapchain, UINT64_MAX, data.availableSemaphores[data.currentFrame], VK_NULL_HANDLE, &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         return RecreateSwapchainVulkan(data);
@@ -429,53 +406,97 @@ int Kynetic::App::DrawFrame(RenderData& data) {
         return -1;
     }
 
-    if (data.image_in_flight[image_index] != VK_NULL_HANDLE) {
-        disp.waitForFences(1, &data.image_in_flight[image_index], VK_TRUE, UINT64_MAX);
+    if (data.imageInFlight[imageIndex] != VK_NULL_HANDLE) {
+        dispatch.waitForFences(1, &data.imageInFlight[imageIndex], VK_TRUE, UINT64_MAX);
     }
-    data.image_in_flight[image_index] = data.in_flight_fences[data.current_frame];
+    data.imageInFlight[imageIndex] = data.inFlightFences[data.currentFrame];
+
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    dispatch.resetCommandBuffer(data.commandBuffers[imageIndex], 0);
+    dispatch.beginCommandBuffer(data.commandBuffers[imageIndex], &beginInfo);
+
+    VkRenderPassBeginInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = data.renderPass;
+    renderPassInfo.framebuffer = data.framebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = { 0, 0 };
+    renderPassInfo.renderArea.extent = swapchain.extent;
+
+    constexpr VkClearValue clearColor{ { { 0.0f, 0.0f, 0.0f, 1.0f } } };
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    dispatch.cmdBeginRenderPass(data.commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchain.extent.width);
+    viewport.height = static_cast<float>(swapchain.extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor = {};
+    scissor.offset = { 0, 0 };
+    scissor.extent = swapchain.extent;
+
+    dispatch.cmdSetViewport(data.commandBuffers[imageIndex], 0, 1, &viewport);
+    dispatch.cmdSetScissor(data.commandBuffers[imageIndex], 0, 1, &scissor);
+    dispatch.cmdBindPipeline(data.commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphicsPipeline);
+    dispatch.cmdDraw(data.commandBuffers[imageIndex], 3, 1, 0, 0);
+
+    // Render ImGui
+    if (ImDrawData* draw_data = ImGui::GetDrawData()) {
+        ImGui_ImplVulkan_RenderDrawData(draw_data, data.commandBuffers[imageIndex]);
+    }
+
+    dispatch.cmdEndRenderPass(data.commandBuffers[imageIndex]);
+    dispatch.endCommandBuffer(data.commandBuffers[imageIndex]);
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    VkSemaphore wait_semaphores[] = { data.available_semaphores[data.current_frame] };
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    const VkSemaphore waitSemaphores[] = { data.availableSemaphores[data.currentFrame] };
+    constexpr VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = wait_semaphores;
-    submitInfo.pWaitDstStageMask = wait_stages;
-
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &data.command_buffers[image_index];
+    submitInfo.pCommandBuffers = &data.commandBuffers[imageIndex];
 
-    VkSemaphore signal_semaphores[] = { data.finished_semaphore[image_index] };
+    const VkSemaphore signalSemaphores[] = { data.finishedSemaphore[imageIndex] };
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signal_semaphores;
+    submitInfo.pSignalSemaphores = signalSemaphores;
 
-    disp.resetFences(1, &data.in_flight_fences[data.current_frame]);
+    dispatch.resetFences(1, &data.inFlightFences[data.currentFrame]);
 
-    if (disp.queueSubmit(data.graphics_queue, 1, &submitInfo, data.in_flight_fences[data.current_frame]) != VK_SUCCESS) {
-        return -1; //"failed to submit draw command buffer
+    if (dispatch.queueSubmit(data.graphicsQueue, 1, &submitInfo, data.inFlightFences[data.currentFrame]) != VK_SUCCESS) {
+        std::println("Failed to submit draw command buffer");
+        return -1;
     }
 
-    VkPresentInfoKHR present_info = {};
-    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    VkPresentInfoKHR presentInfo = {};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
 
-    present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores = signal_semaphores;
+    const VkSwapchainKHR swapchains[] = { swapchain };
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapchains;
+    presentInfo.pImageIndices = &imageIndex;
 
-    VkSwapchainKHR swapChains[] = { swapchain };
-    present_info.swapchainCount = 1;
-    present_info.pSwapchains = swapChains;
-
-    present_info.pImageIndices = &image_index;
-
-    result = disp.queuePresentKHR(data.present_queue, &present_info);
+    result = dispatch.queuePresentKHR(data.presentQueue, &presentInfo);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         return RecreateSwapchainVulkan(data);
     } else if (result != VK_SUCCESS) {
         return -1;
     }
 
-    data.current_frame = (data.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    data.currentFrame = (data.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     return 0;
 }
 
@@ -493,26 +514,30 @@ int Kynetic::App::InitializeVulkan(RenderData& data) {
     return 0;
 }
 
-void Kynetic::App::Cleanup(RenderData& data) {
+void Kynetic::App::Cleanup(const RenderData& data) {
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
     for (size_t i = 0; i < swapchain.image_count; i++) {
-        disp.destroySemaphore(data.finished_semaphore[i], nullptr);
+        dispatch.destroySemaphore(data.finishedSemaphore[i], nullptr);
     }
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        disp.destroySemaphore(data.available_semaphores[i], nullptr);
-        disp.destroyFence(data.in_flight_fences[i], nullptr);
+        dispatch.destroySemaphore(data.availableSemaphores[i], nullptr);
+        dispatch.destroyFence(data.inFlightFences[i], nullptr);
     }
 
-    disp.destroyCommandPool(data.command_pool, nullptr);
+    dispatch.destroyCommandPool(data.commandPool, nullptr);
 
     for (auto framebuffer : data.framebuffers) {
-        disp.destroyFramebuffer(framebuffer, nullptr);
+        dispatch.destroyFramebuffer(framebuffer, nullptr);
     }
 
-    disp.destroyPipeline(data.graphics_pipeline, nullptr);
-    disp.destroyPipelineLayout(data.pipeline_layout, nullptr);
-    disp.destroyRenderPass(data.render_pass, nullptr);
+    dispatch.destroyPipeline(data.graphicsPipeline, nullptr);
+    dispatch.destroyPipelineLayout(data.pipelineLayout, nullptr);
+    dispatch.destroyRenderPass(data.renderPass, nullptr);
 
-    swapchain.destroy_image_views(data.swapchain_image_views);
+    swapchain.destroy_image_views(data.swapchainImageViews);
 
     vkb::destroy_swapchain(swapchain);
     vkb::destroy_device(device);
@@ -525,19 +550,116 @@ void Kynetic::App::Start() {
     RenderData data;
 
     InitializeVulkan(data);
-    InitializeImGui();
-    
+    InitializeImGui(data);
+
+    const ImGuiIO& io = ImGui::GetIO();
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-        int res = DrawFrame(data);
-        if (res != 0) {
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
+
+        ImGui::ShowDemoWindow();
+        ImGui::Render();
+
+        if (const int res = DrawFrame(data); res != 0) {
             return;
         }
     }
-    disp.deviceWaitIdle();
+    dispatch.deviceWaitIdle();
 
     Cleanup(data);
 }
 
-void Kynetic::App::InitializeImGui() {
+void Kynetic::App::InitializeImGui(const RenderData& data) const {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 5.3f;
+    style.FrameRounding = 2.3f;
+    style.ScrollbarRounding = 0.0f;
+    style.Colors[ImGuiCol_Text]                      = ImVec4(0.90f, 0.90f, 0.90f, 1.00f);
+    style.Colors[ImGuiCol_TextDisabled]              = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
+    style.Colors[ImGuiCol_WindowBg]                  = ImVec4(0.07f, 0.02f, 0.02f, 0.85f);
+    style.Colors[ImGuiCol_ChildBg]                   = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    style.Colors[ImGuiCol_PopupBg]                   = ImVec4(0.14f, 0.11f, 0.11f, 0.92f);
+    style.Colors[ImGuiCol_Border]                    = ImVec4(0.50f, 0.50f, 0.50f, 0.50f);
+    style.Colors[ImGuiCol_BorderShadow]              = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    style.Colors[ImGuiCol_FrameBg]                   = ImVec4(0.43f, 0.43f, 0.43f, 0.39f);
+    style.Colors[ImGuiCol_FrameBgHovered]            = ImVec4(0.70f, 0.41f, 0.41f, 0.40f);
+    style.Colors[ImGuiCol_FrameBgActive]             = ImVec4(0.75f, 0.48f, 0.48f, 0.69f);
+    style.Colors[ImGuiCol_TitleBg]                   = ImVec4(0.48f, 0.18f, 0.18f, 0.65f);
+    style.Colors[ImGuiCol_TitleBgActive]             = ImVec4(0.52f, 0.12f, 0.12f, 0.87f);
+    style.Colors[ImGuiCol_TitleBgCollapsed]          = ImVec4(0.80f, 0.40f, 0.40f, 0.20f);
+    style.Colors[ImGuiCol_MenuBarBg]                 = ImVec4(0.00f, 0.00f, 0.00f, 0.80f);
+    style.Colors[ImGuiCol_ScrollbarBg]               = ImVec4(0.30f, 0.20f, 0.20f, 0.60f);
+    style.Colors[ImGuiCol_ScrollbarGrab]             = ImVec4(0.96f, 0.17f, 0.17f, 0.30f);
+    style.Colors[ImGuiCol_ScrollbarGrabHovered]      = ImVec4(1.00f, 0.07f, 0.07f, 0.40f);
+    style.Colors[ImGuiCol_ScrollbarGrabActive]       = ImVec4(1.00f, 0.36f, 0.36f, 0.60f);
+    style.Colors[ImGuiCol_CheckMark]                 = ImVec4(0.90f, 0.90f, 0.90f, 0.50f);
+    style.Colors[ImGuiCol_SliderGrab]                = ImVec4(1.00f, 1.00f, 1.00f, 0.30f);
+    style.Colors[ImGuiCol_SliderGrabActive]          = ImVec4(0.80f, 0.39f, 0.39f, 0.60f);
+    style.Colors[ImGuiCol_Button]                    = ImVec4(0.71f, 0.18f, 0.18f, 0.62f);
+    style.Colors[ImGuiCol_ButtonHovered]             = ImVec4(0.71f, 0.27f, 0.27f, 0.79f);
+    style.Colors[ImGuiCol_ButtonActive]              = ImVec4(0.80f, 0.46f, 0.46f, 1.00f);
+    style.Colors[ImGuiCol_Header]                    = ImVec4(0.56f, 0.16f, 0.16f, 0.45f);
+    style.Colors[ImGuiCol_HeaderHovered]             = ImVec4(0.53f, 0.11f, 0.11f, 1.00f);
+    style.Colors[ImGuiCol_HeaderActive]              = ImVec4(0.87f, 0.53f, 0.53f, 0.80f);
+    style.Colors[ImGuiCol_Separator]                 = ImVec4(0.50f, 0.50f, 0.50f, 0.60f);
+    style.Colors[ImGuiCol_SeparatorHovered]          = ImVec4(0.60f, 0.60f, 0.70f, 1.00f);
+    style.Colors[ImGuiCol_SeparatorActive]           = ImVec4(0.70f, 0.70f, 0.90f, 1.00f);
+    style.Colors[ImGuiCol_ResizeGrip]                = ImVec4(1.00f, 1.00f, 1.00f, 0.10f);
+    style.Colors[ImGuiCol_ResizeGripHovered]         = ImVec4(0.78f, 0.82f, 1.00f, 0.60f);
+    style.Colors[ImGuiCol_ResizeGripActive]          = ImVec4(0.78f, 0.82f, 1.00f, 0.90f);
+    style.Colors[ImGuiCol_TabHovered]                = ImVec4(0.68f, 0.21f, 0.21f, 0.80f);
+    style.Colors[ImGuiCol_Tab]                       = ImVec4(0.47f, 0.12f, 0.12f, 0.79f);
+    style.Colors[ImGuiCol_TabSelected]               = ImVec4(0.68f, 0.21f, 0.21f, 1.00f);
+    style.Colors[ImGuiCol_TabSelectedOverline]       = ImVec4(0.95f, 0.84f, 0.84f, 0.40f);
+    style.Colors[ImGuiCol_TabDimmed]                 = ImVec4(0.00f, 0.00f, 0.00f, 0.83f);
+    style.Colors[ImGuiCol_TabDimmedSelected]         = ImVec4(0.00f, 0.00f, 0.00f, 0.83f);
+    style.Colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.55f, 0.23f, 0.23f, 1.00f);
+    style.Colors[ImGuiCol_DockingPreview]            = ImVec4(0.90f, 0.40f, 0.40f, 0.31f);
+    style.Colors[ImGuiCol_DockingEmptyBg]            = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+    style.Colors[ImGuiCol_PlotLines]                 = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    style.Colors[ImGuiCol_PlotLinesHovered]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    style.Colors[ImGuiCol_PlotHistogram]             = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
+    style.Colors[ImGuiCol_PlotHistogramHovered]      = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    style.Colors[ImGuiCol_TableHeaderBg]             = ImVec4(0.56f, 0.16f, 0.16f, 0.45f);
+    style.Colors[ImGuiCol_TableBorderStrong]         = ImVec4(0.68f, 0.21f, 0.21f, 0.80f);
+    style.Colors[ImGuiCol_TableBorderLight]          = ImVec4(0.26f, 0.26f, 0.28f, 1.00f);
+    style.Colors[ImGuiCol_TableRowBg]                = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    style.Colors[ImGuiCol_TableRowBgAlt]             = ImVec4(1.00f, 1.00f, 1.00f, 0.07f);
+    style.Colors[ImGuiCol_TextSelectedBg]            = ImVec4(1.00f, 0.00f, 0.00f, 0.35f);
+    style.Colors[ImGuiCol_DragDropTarget]            = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    style.Colors[ImGuiCol_NavHighlight]              = ImVec4(0.45f, 0.45f, 0.90f, 0.80f);
+    style.Colors[ImGuiCol_NavWindowingHighlight]     = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+    style.Colors[ImGuiCol_NavWindowingDimBg]         = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+    style.Colors[ImGuiCol_ModalWindowDimBg]          = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    ImGui_ImplVulkan_InitInfo initInfo{};
+    initInfo.ApiVersion = instance.api_version;
+    initInfo.Instance = instance.instance;
+    initInfo.PhysicalDevice = device.physical_device;
+    initInfo.Device = device.device;
+    initInfo.QueueFamily = device.get_queue_index(vkb::QueueType::graphics).value();
+    initInfo.Queue = data.graphicsQueue;
+    initInfo.PipelineCache = VK_NULL_HANDLE;
+    initInfo.DescriptorPoolSize = swapchain.image_count * 1024;
+    initInfo.RenderPass = data.renderPass;
+    initInfo.MinImageCount = swapchain.image_count;
+    initInfo.ImageCount = swapchain.image_count;
+    initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    initInfo.Subpass = 0;
+
+    ImGui_ImplVulkan_Init(&initInfo);
 }
