@@ -6,7 +6,7 @@
 
 namespace Kynetic {
 
-Window::Window(int width, int height, const char *title) {
+Window::Window(const int width, const int height, const char *title) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     m_window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 }
@@ -23,16 +23,11 @@ bool Window::should_close() const {
     return glfwWindowShouldClose(m_window);
 }
 
-VkSurfaceKHR Window::create_surface(VkInstance instance, const VkAllocationCallbacks* allocator) const {
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    if (glfwCreateWindowSurface(instance, m_window, allocator, &surface) != VK_SUCCESS) {
-        const char* error_message;
-        if (int result = glfwGetError(&error_message); result != 0) {
-            std::println("{} {}", result, error_message);
-        }
-        surface = VK_NULL_HANDLE;
-    }
-    return surface;
+void Window::set_user_pointer(void *user_pointer) const {
+    glfwSetWindowUserPointer(m_window, user_pointer);
 }
 
+void Window::set_resize_callback(const GLFWframebuffersizefun framebuffer_resize_callback) const {
+    glfwSetFramebufferSizeCallback(m_window, framebuffer_resize_callback);
+}
 } // Kynetic

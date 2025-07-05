@@ -6,6 +6,5 @@
 
 namespace Kynetic {
 class Renderer {
-
 };
 } // Kynetic

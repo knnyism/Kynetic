@@ -2,82 +2,20 @@
 // Created by kenny on 7/1/25.
 //
 
-#include "Window.h"
+#include "Engine/Core/Window.h"
+#include "Engine/Renderer/Device.h"
+#include "Engine/Renderer/Swapchain.h"
+
 #include "App.h"
 
 namespace Kynetic {
 
     constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
-    int App::InitializeDeviceVulkan() {
-        vkb::InstanceBuilder instanceBuilder;
-        auto instanceResult = instanceBuilder.use_default_debug_messenger().request_validation_layers().build();
-        if (!instanceResult) {
-            std::println("{}", instanceResult.error().message());
-            return -1;
-        }
-        instance = instanceResult.value();
-
-        instanceDispatch = instance.make_table();
-
-        surface = m_window->create_surface(instance, nullptr);
-
-        vkb::PhysicalDeviceSelector physicalDeviceSelector(instance);
-        auto physicalDeviceResult = physicalDeviceSelector.set_surface(surface).select();
-        if (!physicalDeviceResult) {
-            std::println("{}", physicalDeviceResult.error().message());
-            return -1;
-        }
-
-        vkb::DeviceBuilder deviceBuilder(physicalDeviceResult.value());
-        auto deviceResult = deviceBuilder.build();
-        if (!deviceResult) {
-            std::println("{}", deviceResult.error().message());
-            return -1;
-        }
-        device = deviceResult.value();
-
-        dispatch = device.make_table();
-
-        return 0;
-    }
-
-    int App::CreateSwapchainVulkan() {
-        vkb::SwapchainBuilder swapchainBuilder(device);
-        auto swapchainResult = swapchainBuilder
-            .set_old_swapchain(swapchain)
-            .build();
-        if (!swapchainResult) {
-            std::println("{} {}", swapchainResult.error().message(), static_cast<int>(swapchainResult.vk_result()));
-            return -1;
-        }
-        vkb::destroy_swapchain(swapchain);
-        swapchain = swapchainResult.value();
-
-        return 0;
-    }
-
-    int App::GetQueuesVulkan(RenderData& data) const {
-        auto graphicsQueueResult = device.get_queue(vkb::QueueType::graphics);
-        if (!graphicsQueueResult.has_value()) {
-            std::println("Failed to get graphics queue: {}", graphicsQueueResult.error().message());
-            return -1;
-        }
-        data.graphicsQueue = graphicsQueueResult.value();
-
-        auto presentQueueResult = device.get_queue(vkb::QueueType::present);
-        if (!presentQueueResult.has_value()) {
-            std::println("Failed to get present queue: {}", presentQueueResult.error().message());
-            return -1;
-        }
-        data.presentQueue = presentQueueResult.value();
-
-        return 0;
-    }
 
     int App::CreateRenderPassVulkan(RenderData& data) const {
         VkAttachmentDescription colorAttachment = {};
-        colorAttachment.format = swapchain.image_format;
+        colorAttachment.format = m_swapchain->get_image_format();
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -112,7 +50,7 @@ namespace Kynetic {
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        if (dispatch.createRenderPass(&renderPassInfo, nullptr, &data.renderPass) != VK_SUCCESS) {
+        if (m_device->m_disp.createRenderPass(&renderPassInfo, nullptr, &data.renderPass) != VK_SUCCESS) {
             std::println("Failed to create render pass");
             return -1;
         }
@@ -127,7 +65,7 @@ namespace Kynetic {
         createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
         VkShaderModule shaderModule;
-        if (dispatch.createShaderModule(&createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        if (m_device->m_disp.createShaderModule(&createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
             return VK_NULL_HANDLE;
         }
 
@@ -172,14 +110,14 @@ namespace Kynetic {
         VkViewport viewport = {};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapchain.extent.width);
-        viewport.height = static_cast<float>(swapchain.extent.height);
+        viewport.width = static_cast<float>(m_swapchain->get_extent().width);
+        viewport.height = static_cast<float>(m_swapchain->get_extent().height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
         VkRect2D scissor = {};
         scissor.offset = { 0, 0 };
-        scissor.extent = swapchain.extent;
+        scissor.extent = m_swapchain->get_extent();
 
         VkPipelineViewportStateCreateInfo viewportState = {};
         viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -224,7 +162,7 @@ namespace Kynetic {
         pipelineLayoutInfo.setLayoutCount = 0;
         pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-        if (dispatch.createPipelineLayout(&pipelineLayoutInfo, nullptr, &data.pipelineLayout) != VK_SUCCESS) {
+        if (m_device->m_disp.createPipelineLayout(&pipelineLayoutInfo, nullptr, &data.pipelineLayout) != VK_SUCCESS) {
             std::println("Failed to create pipeline layout");
             return -1;
         }
@@ -252,36 +190,34 @@ namespace Kynetic {
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-        if (dispatch.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &data.graphicsPipeline) != VK_SUCCESS) {
+        if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &data.graphicsPipeline) != VK_SUCCESS) {
             std::println("Failed to create graphics pipeline");
             return -1;
         }
 
-        dispatch.destroyShaderModule(fragModule, nullptr);
-        dispatch.destroyShaderModule(vertModule, nullptr);
+        m_device->m_disp.destroyShaderModule(fragModule, nullptr);
+        m_device->m_disp.destroyShaderModule(vertModule, nullptr);
 
         return 0;
     }
 
-    int App::CreateFramebuffersVulkan(RenderData& data) {
-        data.swapchainImages = swapchain.get_images().value();
-        data.swapchainImageViews = swapchain.get_image_views().value();
+    int App::CreateFramebuffersVulkan(RenderData& data) const {
+        const auto& swapchain_image_views = m_swapchain->get_image_views();
+        data.framebuffers.resize(swapchain_image_views.size());
 
-        data.framebuffers.resize(data.swapchainImageViews.size());
-
-        for (size_t i = 0; i < data.swapchainImageViews.size(); i++) {
-            VkImageView attachments[] = { data.swapchainImageViews[i] };
+        for (size_t i = 0; i < swapchain_image_views.size(); i++) {
+            VkImageView attachments[] = { swapchain_image_views[i] };
 
             VkFramebufferCreateInfo framebufferInfo = {};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             framebufferInfo.renderPass = data.renderPass;
             framebufferInfo.attachmentCount = 1;
             framebufferInfo.pAttachments = attachments;
-            framebufferInfo.width = swapchain.extent.width;
-            framebufferInfo.height = swapchain.extent.height;
+            framebufferInfo.width = m_swapchain->get_extent().width;
+            framebufferInfo.height = m_swapchain->get_extent().height;
             framebufferInfo.layers = 1;
 
-            if (dispatch.createFramebuffer(&framebufferInfo, nullptr, &data.framebuffers[i]) != VK_SUCCESS) {
+            if (m_device->m_disp.createFramebuffer(&framebufferInfo, nullptr, &data.framebuffers[i]) != VK_SUCCESS) {
                 std::println("Failed to create framebuffer");
                 return -1;
             }
@@ -294,9 +230,9 @@ namespace Kynetic {
         VkCommandPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = device.get_queue_index(vkb::QueueType::graphics).value();
+        poolInfo.queueFamilyIndex = m_device->get_device().get_queue_index(vkb::QueueType::graphics).value();
 
-        if (dispatch.createCommandPool(&poolInfo, nullptr, &data.commandPool) != VK_SUCCESS) {
+        if (m_device->m_disp.createCommandPool(&poolInfo, nullptr, &data.commandPool) != VK_SUCCESS) {
             std::println("Failed to create command pool");
             return -1;
         }
@@ -313,177 +249,117 @@ namespace Kynetic {
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = static_cast<uint32_t>(data.commandBuffers.size());
 
-        if (dispatch.allocateCommandBuffers(&allocInfo, data.commandBuffers.data()) != VK_SUCCESS) {
+        if (m_device->m_disp.allocateCommandBuffers(&allocInfo, data.commandBuffers.data()) != VK_SUCCESS) {
             return -1;
         }
 
         return 0;
     }
 
-    int App::CreateSyncObjectsVulkan(RenderData& data) const {
-        data.availableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        data.finishedSemaphore.resize(swapchain.image_count);
-        data.inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-        data.imageInFlight.resize(swapchain.image_count, VK_NULL_HANDLE);
+    void App::recreate_swapchain(RenderData& data) {
+        m_device->m_disp.deviceWaitIdle();
 
-        VkSemaphoreCreateInfo semaphoreInfo = {};
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        m_device->m_disp.destroyCommandPool(data.commandPool, nullptr);
 
-        VkFenceCreateInfo fenceInfo = {};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        for (size_t i = 0; i < swapchain.image_count; i++) {
-            if (dispatch.createSemaphore(&semaphoreInfo, nullptr, &data.finishedSemaphore[i]) != VK_SUCCESS) {
-                return -1; // failed to create synchronization objects for a frame
-            }
+        for (const auto framebuffer : data.framebuffers) {
+            m_device->m_disp.destroyFramebuffer(framebuffer, nullptr);
         }
 
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            if (dispatch.createSemaphore(&semaphoreInfo, nullptr, &data.availableSemaphores[i]) != VK_SUCCESS ||
-                dispatch.createFence(&fenceInfo, nullptr, &data.inFlightFences[i]) != VK_SUCCESS) {
-                return -1; // failed to create synchronization objects for a frame
-                }
-        }
-        return 0;
-    }
+        m_swapchain->create_swapchain();
 
-    int App::RecreateSwapchainVulkan(RenderData& data) {
-        dispatch.deviceWaitIdle();
-
-        dispatch.destroyCommandPool(data.commandPool, nullptr);
-
-        for (auto framebuffer : data.framebuffers) {
-            dispatch.destroyFramebuffer(framebuffer, nullptr);
-        }
-
-        swapchain.destroy_image_views(data.swapchainImageViews);
-
-        if (0 != CreateSwapchainVulkan()) return -1;
-        if (0 != CreateFramebuffersVulkan(data)) return -1;
-        if (0 != CreateCommandPoolVulkan(data)) return -1;
-        if (0 != CreateCommandBuffersVulkan(data)) return -1;
-
-        return 0;
+        CreateFramebuffersVulkan(data);
+        CreateCommandPoolVulkan(data);
+        CreateCommandBuffersVulkan(data);
     }
 
     int App::DrawFrame(RenderData& data) {
-        dispatch.waitForFences(1, &data.inFlightFences[data.currentFrame], VK_TRUE, UINT64_MAX);
-
-        uint32_t imageIndex = 0;
-        VkResult result = dispatch.acquireNextImageKHR(
-            swapchain, UINT64_MAX, data.availableSemaphores[data.currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            return RecreateSwapchainVulkan(data);
-        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-            return -1;
+        if (m_window_resized) {
+            m_window_resized = false;
+            recreate_swapchain(data);
+            return 0;
         }
 
-        if (data.imageInFlight[imageIndex] != VK_NULL_HANDLE) {
-            dispatch.waitForFences(1, &data.imageInFlight[imageIndex], VK_TRUE, UINT64_MAX);
-        }
-        data.imageInFlight[imageIndex] = data.inFlightFences[data.currentFrame];
+        const uint32_t image_index = m_swapchain->acquire_next_image_index();
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-        dispatch.resetCommandBuffer(data.commandBuffers[imageIndex], 0);
-        dispatch.beginCommandBuffer(data.commandBuffers[imageIndex], &beginInfo);
+        m_device->m_disp.resetCommandBuffer(data.commandBuffers[image_index], 0);
+        m_device->m_disp.beginCommandBuffer(data.commandBuffers[image_index], &beginInfo);
 
         VkRenderPassBeginInfo renderPassInfo = {};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = data.renderPass;
-        renderPassInfo.framebuffer = data.framebuffers[imageIndex];
+        renderPassInfo.framebuffer = data.framebuffers[image_index];
         renderPassInfo.renderArea.offset = { 0, 0 };
-        renderPassInfo.renderArea.extent = swapchain.extent;
+        renderPassInfo.renderArea.extent = m_swapchain->get_extent();
 
         constexpr VkClearValue clearColor{ { { 0.0f, 0.0f, 0.0f, 1.0f } } };
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
-        dispatch.cmdBeginRenderPass(data.commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        m_device->m_disp.cmdBeginRenderPass(data.commandBuffers[image_index], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         VkViewport viewport = {};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapchain.extent.width);
-        viewport.height = static_cast<float>(swapchain.extent.height);
+        viewport.width = static_cast<float>(m_swapchain->get_extent().width);
+        viewport.height = static_cast<float>(m_swapchain->get_extent().height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
         VkRect2D scissor = {};
         scissor.offset = { 0, 0 };
-        scissor.extent = swapchain.extent;
+        scissor.extent = m_swapchain->get_extent();
 
-        dispatch.cmdSetViewport(data.commandBuffers[imageIndex], 0, 1, &viewport);
-        dispatch.cmdSetScissor(data.commandBuffers[imageIndex], 0, 1, &scissor);
-        dispatch.cmdBindPipeline(data.commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphicsPipeline);
-        dispatch.cmdDraw(data.commandBuffers[imageIndex], 3, 1, 0, 0);
+        m_device->m_disp.cmdSetViewport(data.commandBuffers[image_index], 0, 1, &viewport);
+        m_device->m_disp.cmdSetScissor(data.commandBuffers[image_index], 0, 1, &scissor);
+        m_device->m_disp.cmdBindPipeline(data.commandBuffers[image_index], VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphicsPipeline);
+        m_device->m_disp.cmdDraw(data.commandBuffers[image_index], 3, 1, 0, 0);
 
         // Render ImGui
         if (ImDrawData* draw_data = ImGui::GetDrawData()) {
-            ImGui_ImplVulkan_RenderDrawData(draw_data, data.commandBuffers[imageIndex]);
+            ImGui_ImplVulkan_RenderDrawData(draw_data, data.commandBuffers[image_index]);
         }
 
-        dispatch.cmdEndRenderPass(data.commandBuffers[imageIndex]);
-        dispatch.endCommandBuffer(data.commandBuffers[imageIndex]);
+        m_device->m_disp.cmdEndRenderPass(data.commandBuffers[image_index]);
+        m_device->m_disp.endCommandBuffer(data.commandBuffers[image_index]);
 
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        const VkSemaphore waitSemaphores[] = { data.availableSemaphores[data.currentFrame] };
+        const VkSemaphore waitSemaphores[] = { m_swapchain->get_available_semaphore() };
         constexpr VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &data.commandBuffers[imageIndex];
+        submitInfo.pCommandBuffers = &data.commandBuffers[image_index];
 
-        const VkSemaphore signalSemaphores[] = { data.finishedSemaphore[imageIndex] };
+        const VkSemaphore signalSemaphores[] = { m_swapchain->get_finished_semaphore(image_index) };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        dispatch.resetFences(1, &data.inFlightFences[data.currentFrame]);
+        m_swapchain->reset_fence();
 
-        if (dispatch.queueSubmit(data.graphicsQueue, 1, &submitInfo, data.inFlightFences[data.currentFrame]) != VK_SUCCESS) {
+        if (m_device->m_disp.queueSubmit(m_device->get_graphics_queue(), 1, &submitInfo, m_swapchain->get_in_flight_fence()) != VK_SUCCESS) {
             std::println("Failed to submit draw command buffer");
             return -1;
         }
 
-        VkPresentInfoKHR presentInfo = {};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
+        m_swapchain->present(image_index);
 
-        const VkSwapchainKHR swapchains[] = { swapchain };
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapchains;
-        presentInfo.pImageIndices = &imageIndex;
-
-        result = dispatch.queuePresentKHR(data.presentQueue, &presentInfo);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-            return RecreateSwapchainVulkan(data);
-        } else if (result != VK_SUCCESS) {
-            return -1;
-        }
-
-        data.currentFrame = (data.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
         return 0;
     }
 
     int App::InitializeVulkan(RenderData& data) {
-        if (0 != InitializeDeviceVulkan()) return -1;
-        if (0 != CreateSwapchainVulkan()) return -1;
-        if (0 != GetQueuesVulkan(data)) return -1;
         if (0 != CreateRenderPassVulkan(data)) return -1;
         if (0 != CreateGraphicsPipelineVulkan(data)) return -1;
         if (0 != CreateFramebuffersVulkan(data)) return -1;
         if (0 != CreateCommandPoolVulkan(data)) return -1;
         if (0 != CreateCommandBuffersVulkan(data)) return -1;
-        if (0 != CreateSyncObjectsVulkan(data)) return -1;
 
         return 0;
     }
@@ -493,40 +369,28 @@ namespace Kynetic {
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
 
-        for (size_t i = 0; i < swapchain.image_count; i++) {
-            dispatch.destroySemaphore(data.finishedSemaphore[i], nullptr);
-        }
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            dispatch.destroySemaphore(data.availableSemaphores[i], nullptr);
-            dispatch.destroyFence(data.inFlightFences[i], nullptr);
+        m_device->m_disp.destroyCommandPool(data.commandPool, nullptr);
+
+        for (const auto framebuffer : data.framebuffers) {
+            m_device->m_disp.destroyFramebuffer(framebuffer, nullptr);
         }
 
-        dispatch.destroyCommandPool(data.commandPool, nullptr);
-
-        for (auto framebuffer : data.framebuffers) {
-            dispatch.destroyFramebuffer(framebuffer, nullptr);
-        }
-
-        dispatch.destroyPipeline(data.graphicsPipeline, nullptr);
-        dispatch.destroyPipelineLayout(data.pipelineLayout, nullptr);
-        dispatch.destroyRenderPass(data.renderPass, nullptr);
-
-        swapchain.destroy_image_views(data.swapchainImageViews);
-
-        vkb::destroy_swapchain(swapchain);
-        vkb::destroy_device(device);
-        vkb::destroy_surface(instance, surface);
-        vkb::destroy_instance(instance);
+        m_device->m_disp.destroyPipeline(data.graphicsPipeline, nullptr);
+        m_device->m_disp.destroyPipelineLayout(data.pipelineLayout, nullptr);
+        m_device->m_disp.destroyRenderPass(data.renderPass, nullptr);
     }
 
-    App::App() {
-        m_window =
-            std::make_unique<Window>(1024, 768, "Kynetic");
+    App::App() : m_window(std::make_unique<Window>(1024, 768, "Kynetic")),
+                 m_device(std::make_unique<Device>(m_window->get())),
+                 m_swapchain(std::make_unique<Swapchain>(*m_device)) {
     }
+
+    App::~App() = default;
 
     void App::Start() {
         RenderData data;
 
+        InitializeCallbacks();
         InitializeVulkan(data);
         InitializeImGui(data);
 
@@ -545,7 +409,7 @@ namespace Kynetic {
                 return;
             }
         }
-        dispatch.deviceWaitIdle();
+        m_device->m_disp.deviceWaitIdle();
 
         Cleanup(data);
     }
@@ -620,23 +484,33 @@ namespace Kynetic {
         style.Colors[ImGuiCol_NavWindowingDimBg]         = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
         style.Colors[ImGuiCol_ModalWindowDimBg]          = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
 
-        ImGui_ImplGlfw_InitForVulkan(m_window->get_handle(), true);
+        ImGui_ImplGlfw_InitForVulkan(m_window->get(), true);
 
         ImGui_ImplVulkan_InitInfo initInfo{};
-        initInfo.ApiVersion = instance.api_version;
-        initInfo.Instance = instance.instance;
-        initInfo.PhysicalDevice = device.physical_device;
-        initInfo.Device = device.device;
-        initInfo.QueueFamily = device.get_queue_index(vkb::QueueType::graphics).value();
-        initInfo.Queue = data.graphicsQueue;
+        initInfo.ApiVersion = m_device->get_instance().api_version;
+        initInfo.Instance = m_device->get_instance().instance;
+        initInfo.PhysicalDevice = m_device->get_device().physical_device;
+        initInfo.Device = m_device->get_device().device;
+        initInfo.QueueFamily = m_device->get_device().get_queue_index(vkb::QueueType::graphics).value();
+        initInfo.Queue = m_device->get_graphics_queue();
         initInfo.PipelineCache = VK_NULL_HANDLE;
-        initInfo.DescriptorPoolSize = swapchain.image_count * 1024;
+        initInfo.DescriptorPoolSize = m_swapchain->get_image_count() * 1024;
         initInfo.RenderPass = data.renderPass;
-        initInfo.MinImageCount = swapchain.image_count;
-        initInfo.ImageCount = swapchain.image_count;
+        initInfo.MinImageCount = m_swapchain->get_image_count();
+        initInfo.ImageCount = m_swapchain->get_image_count();
         initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
         initInfo.Subpass = 0;
 
         ImGui_ImplVulkan_Init(&initInfo);
+    }
+
+    void App::InitializeCallbacks() {
+        m_window->set_user_pointer(this);
+
+        m_window->set_resize_callback([](GLFWwindow *window, int width, int height) {
+            auto *app = static_cast<App*>(glfwGetWindowUserPointer(window));
+            std::println("Window extents: {}x{}", width, height);
+            app->m_window_resized = true;
+        });
     }
 } // Kynetic

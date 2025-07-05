@@ -99,6 +99,8 @@ set(ENGINE_SOURCES
         src/Engine/Renderer/Renderer.h
         src/Engine/Renderer/Swapchain.cpp
         src/Engine/Renderer/Swapchain.h
+        src/Engine/Renderer/Device.cpp
+        src/Engine/Renderer/Device.h
 )
 
 add_executable(kynetic
