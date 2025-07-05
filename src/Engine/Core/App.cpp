@@ -5,228 +5,13 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Renderer/Device.h"
 #include "Engine/Renderer/Swapchain.h"
+#include "Engine/Renderer/Shader.h"
+#include "Engine/Renderer/Renderer.h"
 
 #include "App.h"
 
 namespace Kynetic {
-
-    constexpr int MAX_FRAMES_IN_FLIGHT = 3;
-
-
-    int App::CreateRenderPassVulkan(RenderData& data) const {
-        VkAttachmentDescription colorAttachment = {};
-        colorAttachment.format = m_swapchain->get_image_format();
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentReference colorAttachmentRef = {};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass = {};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-
-        VkSubpassDependency dependency = {};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-        VkRenderPassCreateInfo renderPassInfo = {};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-        renderPassInfo.dependencyCount = 1;
-        renderPassInfo.pDependencies = &dependency;
-
-        if (m_device->m_disp.createRenderPass(&renderPassInfo, nullptr, &data.renderPass) != VK_SUCCESS) {
-            std::println("Failed to create render pass");
-            return -1;
-        }
-
-        return 0;
-    }
-
-    VkShaderModule App::CreateShaderModuleVulkan(const std::vector<char>& code) const {
-        VkShaderModuleCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-        VkShaderModule shaderModule;
-        if (m_device->m_disp.createShaderModule(&createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-            return VK_NULL_HANDLE;
-        }
-
-        return shaderModule;
-    }
-
-    int App::CreateGraphicsPipelineVulkan(RenderData& data) const {
-        auto vertCode = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.vert.spv");
-        auto fragCode = ReadFile(std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.frag.spv");
-
-        VkShaderModule vertModule = CreateShaderModuleVulkan(vertCode);
-        VkShaderModule fragModule = CreateShaderModuleVulkan(fragCode);
-        if (vertModule == VK_NULL_HANDLE || fragModule == VK_NULL_HANDLE) {
-            std::println("Failed to create shader modules");
-            return -1;
-        }
-
-        VkPipelineShaderStageCreateInfo vertStageInfo = {};
-        vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vertStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertStageInfo.module = vertModule;
-        vertStageInfo.pName = "main";
-
-        VkPipelineShaderStageCreateInfo fragStageInfo = {};
-        fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragStageInfo.module = fragModule;
-        fragStageInfo.pName = "main";
-
-        VkPipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
-
-        VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
-        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 0;
-        vertexInputInfo.vertexAttributeDescriptionCount = 0;
-
-        VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
-        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-        VkViewport viewport = {};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(m_swapchain->get_extent().width);
-        viewport.height = static_cast<float>(m_swapchain->get_extent().height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        VkRect2D scissor = {};
-        scissor.offset = { 0, 0 };
-        scissor.extent = m_swapchain->get_extent();
-
-        VkPipelineViewportStateCreateInfo viewportState = {};
-        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewportState.viewportCount = 1;
-        viewportState.pViewports = &viewport;
-        viewportState.scissorCount = 1;
-        viewportState.pScissors = &scissor;
-
-        VkPipelineRasterizationStateCreateInfo rasterizer = {};
-        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterizer.depthClampEnable = VK_FALSE;
-        rasterizer.rasterizerDiscardEnable = VK_FALSE;
-        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-        rasterizer.lineWidth = 1.0f;
-        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-        rasterizer.depthBiasEnable = VK_FALSE;
-
-        VkPipelineMultisampleStateCreateInfo multisampling = {};
-        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisampling.sampleShadingEnable = VK_FALSE;
-        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-        VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-        colorBlendAttachment.colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_FALSE;
-
-        VkPipelineColorBlendStateCreateInfo colorBlending = {};
-        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlending.logicOpEnable = VK_FALSE;
-        colorBlending.logicOp = VK_LOGIC_OP_COPY;
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &colorBlendAttachment;
-        colorBlending.blendConstants[0] = 0.0f;
-        colorBlending.blendConstants[1] = 0.0f;
-        colorBlending.blendConstants[2] = 0.0f;
-        colorBlending.blendConstants[3] = 0.0f;
-
-        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 0;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
-
-        if (m_device->m_disp.createPipelineLayout(&pipelineLayoutInfo, nullptr, &data.pipelineLayout) != VK_SUCCESS) {
-            std::println("Failed to create pipeline layout");
-            return -1;
-        }
-
-        std::vector<VkDynamicState> dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-
-        VkPipelineDynamicStateCreateInfo dynamicInfo = {};
-        dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamicInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-        dynamicInfo.pDynamicStates = dynamicStates.data();
-
-        VkGraphicsPipelineCreateInfo pipelineInfo = {};
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = 2;
-        pipelineInfo.pStages = shaderStages;
-        pipelineInfo.pVertexInputState = &vertexInputInfo;
-        pipelineInfo.pInputAssemblyState = &inputAssembly;
-        pipelineInfo.pViewportState = &viewportState;
-        pipelineInfo.pRasterizationState = &rasterizer;
-        pipelineInfo.pMultisampleState = &multisampling;
-        pipelineInfo.pColorBlendState = &colorBlending;
-        pipelineInfo.pDynamicState = &dynamicInfo;
-        pipelineInfo.layout = data.pipelineLayout;
-        pipelineInfo.renderPass = data.renderPass;
-        pipelineInfo.subpass = 0;
-        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-        if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &data.graphicsPipeline) != VK_SUCCESS) {
-            std::println("Failed to create graphics pipeline");
-            return -1;
-        }
-
-        m_device->m_disp.destroyShaderModule(fragModule, nullptr);
-        m_device->m_disp.destroyShaderModule(vertModule, nullptr);
-
-        return 0;
-    }
-
-    int App::CreateFramebuffersVulkan(RenderData& data) const {
-        const auto& swapchain_image_views = m_swapchain->get_image_views();
-        data.framebuffers.resize(swapchain_image_views.size());
-
-        for (size_t i = 0; i < swapchain_image_views.size(); i++) {
-            VkImageView attachments[] = { swapchain_image_views[i] };
-
-            VkFramebufferCreateInfo framebufferInfo = {};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = data.renderPass;
-            framebufferInfo.attachmentCount = 1;
-            framebufferInfo.pAttachments = attachments;
-            framebufferInfo.width = m_swapchain->get_extent().width;
-            framebufferInfo.height = m_swapchain->get_extent().height;
-            framebufferInfo.layers = 1;
-
-            if (m_device->m_disp.createFramebuffer(&framebufferInfo, nullptr, &data.framebuffers[i]) != VK_SUCCESS) {
-                std::println("Failed to create framebuffer");
-                return -1;
-            }
-        }
-
-        return 0;
-    }
-
-    int App::CreateCommandPoolVulkan(RenderData& data) const {
+    int App::CreateCommandPoolVulkan() const {
         VkCommandPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -240,8 +25,8 @@ namespace Kynetic {
         return 0;
     }
 
-    int App::CreateCommandBuffersVulkan(RenderData& data) const {
-        data.commandBuffers.resize(data.framebuffers.size());
+    int App::CreateCommandBuffersVulkan() const {
+        data.commandBuffers.resize(m_swapchain->get_framebuffers().size());
 
         VkCommandBufferAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -256,30 +41,31 @@ namespace Kynetic {
         return 0;
     }
 
-    void App::recreate_swapchain(RenderData& data) {
+    void App::recreate_swapchain() const {
         m_device->m_disp.deviceWaitIdle();
 
         m_device->m_disp.destroyCommandPool(data.commandPool, nullptr);
 
-        for (const auto framebuffer : data.framebuffers) {
-            m_device->m_disp.destroyFramebuffer(framebuffer, nullptr);
-        }
-
         m_swapchain->create_swapchain();
+        m_swapchain->create_framebuffers(m_renderer->get_render_pass());
 
-        CreateFramebuffersVulkan(data);
-        CreateCommandPoolVulkan(data);
-        CreateCommandBuffersVulkan(data);
+        CreateCommandPoolVulkan();
+        CreateCommandBuffersVulkan();
     }
 
-    int App::DrawFrame(RenderData& data) {
+    int App::DrawFrame() {
         if (m_window_resized) {
             m_window_resized = false;
-            recreate_swapchain(data);
+            recreate_swapchain();
             return 0;
         }
 
         const uint32_t image_index = m_swapchain->acquire_next_image_index();
+
+        if (image_index == UINT32_MAX) {
+            recreate_swapchain();
+            return 0;
+        }
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -290,8 +76,8 @@ namespace Kynetic {
 
         VkRenderPassBeginInfo renderPassInfo = {};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = data.renderPass;
-        renderPassInfo.framebuffer = data.framebuffers[image_index];
+        renderPassInfo.renderPass = m_renderer->get_render_pass();
+        renderPassInfo.framebuffer = m_swapchain->get_framebuffers()[image_index];
         renderPassInfo.renderArea.offset = { 0, 0 };
         renderPassInfo.renderArea.extent = m_swapchain->get_extent();
 
@@ -315,7 +101,7 @@ namespace Kynetic {
 
         m_device->m_disp.cmdSetViewport(data.commandBuffers[image_index], 0, 1, &viewport);
         m_device->m_disp.cmdSetScissor(data.commandBuffers[image_index], 0, 1, &scissor);
-        m_device->m_disp.cmdBindPipeline(data.commandBuffers[image_index], VK_PIPELINE_BIND_POINT_GRAPHICS, data.graphicsPipeline);
+        m_device->m_disp.cmdBindPipeline(data.commandBuffers[image_index], VK_PIPELINE_BIND_POINT_GRAPHICS, m_renderer->get_pipeline());
         m_device->m_disp.cmdDraw(data.commandBuffers[image_index], 3, 1, 0, 0);
 
         // Render ImGui
@@ -354,45 +140,34 @@ namespace Kynetic {
         return 0;
     }
 
-    int App::InitializeVulkan(RenderData& data) {
-        if (0 != CreateRenderPassVulkan(data)) return -1;
-        if (0 != CreateGraphicsPipelineVulkan(data)) return -1;
-        if (0 != CreateFramebuffersVulkan(data)) return -1;
-        if (0 != CreateCommandPoolVulkan(data)) return -1;
-        if (0 != CreateCommandBuffersVulkan(data)) return -1;
+    int App::InitializeVulkan() {
+        if (0 != CreateCommandPoolVulkan()) return -1;
+        if (0 != CreateCommandBuffersVulkan()) return -1;
 
         return 0;
     }
 
-    void App::Cleanup(const RenderData& data) {
+    void App::Cleanup() {
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
 
         m_device->m_disp.destroyCommandPool(data.commandPool, nullptr);
-
-        for (const auto framebuffer : data.framebuffers) {
-            m_device->m_disp.destroyFramebuffer(framebuffer, nullptr);
-        }
-
-        m_device->m_disp.destroyPipeline(data.graphicsPipeline, nullptr);
-        m_device->m_disp.destroyPipelineLayout(data.pipelineLayout, nullptr);
-        m_device->m_disp.destroyRenderPass(data.renderPass, nullptr);
     }
 
     App::App() : m_window(std::make_unique<Window>(1024, 768, "Kynetic")),
                  m_device(std::make_unique<Device>(m_window->get())),
-                 m_swapchain(std::make_unique<Swapchain>(*m_device)) {
+                 m_swapchain(std::make_unique<Swapchain>(*m_device)),
+                 m_renderer(std::make_unique<Renderer>(*m_device, *m_swapchain)) {
+        m_swapchain->create_framebuffers(m_renderer->get_render_pass());
     }
 
     App::~App() = default;
 
     void App::Start() {
-        RenderData data;
-
         InitializeCallbacks();
-        InitializeVulkan(data);
-        InitializeImGui(data);
+        InitializeVulkan();
+        InitializeImGui();
 
         while (!m_window->should_close()) {
             glfwPollEvents();
@@ -405,16 +180,16 @@ namespace Kynetic {
             ImGui::ShowDemoWindow();
             ImGui::Render();
 
-            if (const int res = DrawFrame(data); res != 0) {
+            if (const int res = DrawFrame(); res != 0) {
                 return;
             }
         }
         m_device->m_disp.deviceWaitIdle();
 
-        Cleanup(data);
+        Cleanup();
     }
 
-    void App::InitializeImGui(const RenderData& data) const {
+    void App::InitializeImGui() const {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
@@ -495,7 +270,7 @@ namespace Kynetic {
         initInfo.Queue = m_device->get_graphics_queue();
         initInfo.PipelineCache = VK_NULL_HANDLE;
         initInfo.DescriptorPoolSize = m_swapchain->get_image_count() * 1024;
-        initInfo.RenderPass = data.renderPass;
+        initInfo.RenderPass = m_renderer->get_render_pass();
         initInfo.MinImageCount = m_swapchain->get_image_count();
         initInfo.ImageCount = m_swapchain->get_image_count();
         initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
@@ -509,7 +284,6 @@ namespace Kynetic {
 
         m_window->set_resize_callback([](GLFWwindow *window, int width, int height) {
             auto *app = static_cast<App*>(glfwGetWindowUserPointer(window));
-            std::println("Window extents: {}x{}", width, height);
             app->m_window_resized = true;
         });
     }

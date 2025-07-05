@@ -14,6 +14,7 @@ class Swapchain {
 
     std::vector<VkImage> m_images;
     std::vector<VkImageView> m_image_views;
+    std::vector<VkFramebuffer> m_framebuffers;
 
     std::vector<VkSemaphore> m_available_semaphores;
     std::vector<VkSemaphore> m_finished_semaphores;
@@ -31,8 +32,11 @@ public:
     Swapchain& operator=(const Swapchain&) = delete;
 
     [[nodiscard]] VkSwapchainKHR get() const { return m_swapchain.swapchain; }
+
     [[nodiscard]] const std::vector<VkImage>& get_images() const { return m_images; }
     [[nodiscard]] const std::vector<VkImageView>& get_image_views() const { return m_image_views; }
+    [[nodiscard]] const std::vector<VkFramebuffer>& get_framebuffers() const { return m_framebuffers; }
+
     [[nodiscard]] VkFormat get_image_format() const { return m_swapchain.image_format; }
     [[nodiscard]] VkExtent2D get_extent() const { return m_swapchain.extent; }
     [[nodiscard]] uint32_t get_image_count() const { return m_swapchain.image_count; }
@@ -47,6 +51,7 @@ public:
     void present(uint32_t image_index);
 
     void create_swapchain();
+    void create_framebuffers(VkRenderPass render_pass);
 };
 
 } // Kynetic

@@ -18,4 +18,4 @@
 #include "imgui.h"
 #include "ImGuizmo.h"
 
-std::vector<char> ReadFile(const std::string& filename);
+std::vector<char> read_file(const std::string& filename);

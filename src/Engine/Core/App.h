@@ -4,22 +4,12 @@
 
 #pragma once
 
-struct RenderData {
-    std::vector<VkFramebuffer> framebuffers;
-
-    VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
-
-    VkCommandPool commandPool;
-    std::vector<VkCommandBuffer> commandBuffers;
-};
-
 namespace Kynetic {
 
     class Window;
     class Device;
     class Swapchain;
+    class Renderer;
 
     class App {
     public:
@@ -31,26 +21,20 @@ namespace Kynetic {
         std::unique_ptr<Window> m_window;
         std::unique_ptr<Device> m_device;
         std::unique_ptr<Swapchain> m_swapchain;
+        std::unique_ptr<Renderer> m_renderer;
 
         bool m_window_resized = false;
 
-        void recreate_swapchain(RenderData &data);
+        void recreate_swapchain() const;
 
-        int CreateRenderPassVulkan(RenderData &data) const;
-        [[nodiscard]] VkShaderModule CreateShaderModuleVulkan(const std::vector<char> &code) const;
-        int CreateGraphicsPipelineVulkan(RenderData &data) const;
-        int CreateFramebuffersVulkan(RenderData &data) const;
-        int CreateCommandPoolVulkan(RenderData &data) const;
-        int CreateCommandBuffersVulkan(RenderData &data) const;
+        int DrawFrame();
 
-        int DrawFrame(RenderData &data);
-
-        int InitializeVulkan(RenderData &data);
-        void InitializeImGui(const RenderData &data) const;
+        int InitializeVulkan();
+        void InitializeImGui() const;
 
         void InitializeCallbacks();
 
-        void Cleanup(const RenderData& renderData);
+        void Cleanup();
     };
 
 } // Kynetic

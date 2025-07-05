@@ -15,6 +15,10 @@ Swapchain::Swapchain(const Device &device) : m_device(device) {
 }
 
 Swapchain::~Swapchain() {
+    for (const auto framebuffer : m_framebuffers) {
+        m_device.m_disp.destroyFramebuffer(framebuffer, nullptr);
+    }
+
     for (size_t i = 0; i < m_swapchain.image_count; i++) {
         m_device.m_disp.destroySemaphore(m_finished_semaphores[i], nullptr);
     }
@@ -51,6 +55,31 @@ void Swapchain::create_sync_objects() {
             m_device.m_disp.createFence(&fenceInfo, nullptr, &m_in_flight_fences[i]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create synchronization objects");
             }
+    }
+}
+
+void Swapchain::create_framebuffers(const VkRenderPass render_pass) {
+    for (const auto framebuffer : m_framebuffers) {
+        m_device.m_disp.destroyFramebuffer(framebuffer, nullptr);
+    }
+
+    m_framebuffers.resize(m_image_views.size());
+
+    for (size_t i = 0; i < m_image_views.size(); i++) {
+        const VkImageView attachments[] = { m_image_views[i] };
+
+        VkFramebufferCreateInfo framebufferInfo = {};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = render_pass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = m_swapchain.extent.width;
+        framebufferInfo.height = m_swapchain.extent.height;
+        framebufferInfo.layers = 1;
+
+        if (m_device.m_disp.createFramebuffer(&framebufferInfo, nullptr, &m_framebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create framebuffer");
+        }
     }
 }
 
@@ -91,12 +120,13 @@ uint32_t Swapchain::acquire_next_image_index() {
     m_device.m_disp.waitForFences(1, &m_in_flight_fences[m_frame_index], VK_TRUE, UINT64_MAX);
 
     uint32_t image_index;
+    const VkResult result = m_device.m_disp.acquireNextImageKHR(m_swapchain.swapchain, UINT64_MAX,
+                                                                        m_available_semaphores[m_frame_index],
+                                                                        VK_NULL_HANDLE,
+                                                                        &image_index);
 
-    if (const VkResult result = m_device.m_disp.acquireNextImageKHR(m_swapchain.swapchain, UINT64_MAX,
-                                                                    m_available_semaphores[m_frame_index],
-                                                                    VK_NULL_HANDLE,
-                                                                    &image_index); result == VK_ERROR_OUT_OF_DATE_KHR) {
-        // create_swapchain();
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        return UINT32_MAX;
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("Failed to acquire swapchain image");
     }
@@ -119,9 +149,9 @@ void Swapchain::present(uint32_t image_index) {
         .pImageIndices = &image_index
     };
 
-    if (const VkResult result = m_device.m_disp.queuePresentKHR(m_device.get_present_queue(), &present_info);
-        result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-        // create_swapchain();
+    const VkResult result = m_device.m_disp.queuePresentKHR(m_device.get_present_queue(), &present_info);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        return;
     } else if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to present swapchain image");
     }

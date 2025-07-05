@@ -101,6 +101,10 @@ set(ENGINE_SOURCES
         src/Engine/Renderer/Swapchain.h
         src/Engine/Renderer/Device.cpp
         src/Engine/Renderer/Device.h
+        src/Engine/Renderer/Shader.cpp
+        src/Engine/Renderer/Shader.h
+        src/Engine/UI/ImGuiRenderer.cpp
+        src/Engine/UI/ImGuiRenderer.h
 )
 
 add_executable(kynetic

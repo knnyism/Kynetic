@@ -2,7 +2,7 @@
 // Created by kenny on 3-7-25.
 //
 
-std::vector<char> ReadFile(const std::string& filename) {
+std::vector<char> read_file(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
