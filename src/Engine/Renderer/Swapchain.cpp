@@ -18,7 +18,6 @@ Swapchain::~Swapchain() {
     for (const auto framebuffer : m_framebuffers) {
         m_device.m_disp.destroyFramebuffer(framebuffer, nullptr);
     }
-
     for (size_t i = 0; i < m_swapchain.image_count; i++) {
         m_device.m_disp.destroySemaphore(m_finished_semaphores[i], nullptr);
     }
@@ -142,11 +141,13 @@ uint32_t Swapchain::acquire_next_image_index() {
 void Swapchain::present(uint32_t image_index) {
     const VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .pNext = nullptr,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &m_finished_semaphores[image_index],
         .swapchainCount = 1,
         .pSwapchains = &m_swapchain.swapchain,
-        .pImageIndices = &image_index
+        .pImageIndices = &image_index,
+        .pResults = nullptr
     };
 
     const VkResult result =

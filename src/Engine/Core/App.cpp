@@ -116,7 +116,8 @@ int App::draw_frame() {
 
     m_swapchain->reset_fence();
 
-    if (m_device->m_disp.queueSubmit(m_device->get_graphics_queue(), 1, &submitInfo, m_swapchain->get_in_flight_fence()) != VK_SUCCESS) {
+    if (m_device->m_disp.queueSubmit(m_device->get_graphics_queue(),
+        1, &submitInfo, m_swapchain->get_in_flight_fence()) != VK_SUCCESS) {
         std::println("Failed to submit draw command buffer");
         return -1;
     }

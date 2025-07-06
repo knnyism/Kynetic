@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/kengine.iml" filepath="$PROJECT_DIR$/.idea/kengine.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/kynetic.iml" filepath="$PROJECT_DIR$/.idea/kynetic.iml" />
     </modules>
   </component>
 </project>
