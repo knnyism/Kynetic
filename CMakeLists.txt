@@ -105,6 +105,8 @@ set(ENGINE_SOURCES
         src/Engine/Renderer/Shader.h
         src/Engine/UI/ImGuiRenderer.cpp
         src/Engine/UI/ImGuiRenderer.h
+        src/Engine/Renderer/CommandPool.cpp
+        src/Engine/Renderer/CommandPool.h
 )
 
 add_executable(kynetic

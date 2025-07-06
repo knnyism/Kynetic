@@ -4,25 +4,22 @@
 
 #include "Device.h"
 #include "Swapchain.h"
+#include "CommandPool.h"
 #include "Shader.h"
 #include "Renderer.h"
 
 namespace Kynetic {
-Renderer::Renderer(const Device &device, const Swapchain &swapchain) : m_device(device), m_swapchain(swapchain) {
-    create_render_pass();
-    create_graphics_pipeline();
-}
 
 Renderer::~Renderer() {
-    m_device.m_disp.destroyPipeline(m_pipeline, nullptr);
-    m_device.m_disp.destroyPipelineLayout(m_layout, nullptr);
+    m_device->m_disp.destroyPipeline(m_pipeline, nullptr);
+    m_device->m_disp.destroyPipelineLayout(m_layout, nullptr);
 
-    m_device.m_disp.destroyRenderPass(m_render_pass, nullptr);
+    m_device->m_disp.destroyRenderPass(m_render_pass, nullptr);
 }
 
 void Renderer::create_render_pass() {
     VkAttachmentDescription colorAttachment = {};
-    colorAttachment.format = m_swapchain.get_image_format();
+    colorAttachment.format = m_swapchain->get_image_format();
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -57,18 +54,18 @@ void Renderer::create_render_pass() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (m_device.m_disp.createRenderPass(&renderPassInfo, nullptr, &m_render_pass) != VK_SUCCESS) {
+    if (m_device->m_disp.createRenderPass(&renderPassInfo, nullptr, &m_render_pass) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create render pass");
     }
 }
 
 void Renderer::create_graphics_pipeline() {
     Shader vert_shader{
-        m_device, VK_SHADER_STAGE_VERTEX_BIT, "triangle",
+        *m_device, VK_SHADER_STAGE_VERTEX_BIT, "triangle",
         std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.vert.spv"
     };
     Shader frag_shader{
-        m_device, VK_SHADER_STAGE_FRAGMENT_BIT, "triangle",
+        *m_device, VK_SHADER_STAGE_FRAGMENT_BIT, "triangle",
         std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.frag.spv"
     };
     if (vert_shader.module() == VK_NULL_HANDLE || frag_shader.module() == VK_NULL_HANDLE) {
@@ -102,14 +99,14 @@ void Renderer::create_graphics_pipeline() {
     VkViewport viewport = {};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(m_swapchain.get_extent().width);
-    viewport.height = static_cast<float>(m_swapchain.get_extent().height);
+    viewport.width = static_cast<float>(m_swapchain->get_extent().width);
+    viewport.height = static_cast<float>(m_swapchain->get_extent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor = {};
     scissor.offset = { 0, 0 };
-    scissor.extent = m_swapchain.get_extent();
+    scissor.extent = m_swapchain->get_extent();
 
     VkPipelineViewportStateCreateInfo viewportState = {};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -154,7 +151,7 @@ void Renderer::create_graphics_pipeline() {
     pipelineLayoutInfo.setLayoutCount = 0;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-    if (m_device.m_disp.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_layout) != VK_SUCCESS) {
+    if (m_device->m_disp.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_layout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
 
@@ -181,7 +178,7 @@ void Renderer::create_graphics_pipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (m_device.m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS) {
+    if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 }

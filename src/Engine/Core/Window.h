@@ -8,7 +8,6 @@ namespace Kynetic {
 
 class Window {
     GLFWwindow* m_window = nullptr;
-
 public:
     Window(int width, int height, const char *title);
     ~Window();

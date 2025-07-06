@@ -149,7 +149,9 @@ void Swapchain::present(uint32_t image_index) {
         .pImageIndices = &image_index
     };
 
-    const VkResult result = m_device.m_disp.queuePresentKHR(m_device.get_present_queue(), &present_info);
+    const VkResult result =
+        m_device.m_disp.queuePresentKHR(m_device.get_present_queue(), &present_info);
+
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         return;
     } else if (result != VK_SUCCESS) {

@@ -7,12 +7,21 @@
 namespace Kynetic {
 
 Window::Window(const int width, const int height, const char *title) {
+    if (!glfwInit()) {
+        throw std::runtime_error("Failed to initialise GLFW");
+    }
+
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     m_window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+    if (m_window == nullptr) {
+        throw std::runtime_error("Failed to create GLFW window");
+    }
 }
 
 Window::~Window() {
     glfwDestroyWindow(m_window);
+    glfwTerminate();
 }
 
 void Window::poll_events() {
@@ -30,4 +39,5 @@ void Window::set_user_pointer(void *user_pointer) const {
 void Window::set_resize_callback(const GLFWframebuffersizefun framebuffer_resize_callback) const {
     glfwSetFramebufferSizeCallback(m_window, framebuffer_resize_callback);
 }
+
 } // Kynetic

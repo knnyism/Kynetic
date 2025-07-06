@@ -3,38 +3,26 @@
 //
 
 #pragma once
+#include "Engine/Renderer/Renderer.h"
 
 namespace Kynetic {
 
-    class Window;
-    class Device;
-    class Swapchain;
-    class Renderer;
+class Window;
 
-    class App {
-    public:
-        App();
-        ~App();
+class App: public Renderer {
+    std::unique_ptr<Window> m_window;
+    std::unique_ptr<ImGuiRenderer> m_imgui_renderer;
 
-        void Start();
-    private:
-        std::unique_ptr<Window> m_window;
-        std::unique_ptr<Device> m_device;
-        std::unique_ptr<Swapchain> m_swapchain;
-        std::unique_ptr<Renderer> m_renderer;
+    bool m_window_resized = false;
 
-        bool m_window_resized = false;
+    void recreate_swapchain() const;
+    int draw_frame();
+    void initialize_callbacks();
+public:
+    App();
+    ~App();
 
-        void recreate_swapchain() const;
-
-        int DrawFrame();
-
-        int InitializeVulkan();
-        void InitializeImGui() const;
-
-        void InitializeCallbacks();
-
-        void Cleanup();
-    };
+    void start();
+};
 
 } // Kynetic

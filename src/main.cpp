@@ -2,13 +2,9 @@
 #include "Engine/Core/App.h"
 
 int main() {
-    glfwInit();
-
     auto *app = new Kynetic::App();
-    app->Start();
+    app->start();
     delete app;
-
-    glfwTerminate();
 
     return 0;
 }
