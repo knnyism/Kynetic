@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 project(kynetic)
 
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
@@ -103,10 +103,10 @@ set(ENGINE_SOURCES
         src/Engine/Renderer/Device.h
         src/Engine/Renderer/Shader.cpp
         src/Engine/Renderer/Shader.h
-        src/Engine/UI/ImGuiRenderer.cpp
-        src/Engine/UI/ImGuiRenderer.h
         src/Engine/Renderer/CommandPool.cpp
         src/Engine/Renderer/CommandPool.h
+        src/Engine/UI/ImGuiRenderer.cpp
+        src/Engine/UI/ImGuiRenderer.h
 )
 
 add_executable(kynetic
@@ -124,7 +124,7 @@ target_link_libraries(kynetic PRIVATE
         fastgltf
 )
 
-target_compile_features(kynetic PRIVATE cxx_std_26)
+target_compile_features(kynetic PRIVATE cxx_std_23)
 
 target_include_directories(kynetic PRIVATE
         src
