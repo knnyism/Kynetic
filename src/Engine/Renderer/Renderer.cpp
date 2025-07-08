@@ -61,13 +61,9 @@ void Renderer::create_render_pass() {
 
 void Renderer::create_graphics_pipeline() {
     Shader vert_shader{
-        *m_device, VK_SHADER_STAGE_VERTEX_BIT, "triangle",
-        std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.vert.spv"
-    };
+        *m_device, VK_SHADER_STAGE_VERTEX_BIT, "triangle", "shaders/triangle.vert.spv" };
     Shader frag_shader{
-        *m_device, VK_SHADER_STAGE_FRAGMENT_BIT, "triangle",
-        std::string(KYNETIC_SOURCE_DIR) + "/assets/shaders/triangle.frag.spv"
-    };
+        *m_device, VK_SHADER_STAGE_FRAGMENT_BIT, "triangle", "shaders/triangle.frag.spv" };
     if (vert_shader.module() == VK_NULL_HANDLE || frag_shader.module() == VK_NULL_HANDLE) {
         throw std::runtime_error("Failed to create shader modules");
     }

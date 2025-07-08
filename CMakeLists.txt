@@ -5,6 +5,17 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
+find_program(GLSLC glslc HINTS
+        ${Vulkan_GLSLC_EXECUTABLE}
+        $ENV{VULKAN_SDK}/bin
+        $ENV{VULKAN_SDK}/Bin
+        $ENV{VULKAN_SDK}/x86_64/bin
+        $ENV{VULKAN_SDK}/Bin32
+)
+
+if(NOT GLSLC)
+    message(FATAL_ERROR "glslc not found! Please install Vulkan SDK.")
+endif()
 
 include(FetchContent)
 
@@ -88,6 +99,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fastgltf)
 
+function(compile_shader target shader_file)
+    get_filename_component(shader_name ${shader_file} NAME)
+    set(output_file "${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader_name}.spv")
+
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+
+    add_custom_command(
+            OUTPUT ${output_file}
+            COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
+            COMMENT "Compiling shader ${shader_name}"
+    )
+
+    target_sources(${target} PRIVATE ${output_file})
+endfunction()
+
+file(GLOB_RECURSE SHADER_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.vert"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.frag"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.comp"
+)
+
+add_custom_target(shaders)
+
+foreach(shader ${SHADER_FILES})
+    file(RELATIVE_PATH shader_rel ${CMAKE_CURRENT_SOURCE_DIR} ${shader})
+    compile_shader(shaders ${shader_rel})
+endforeach()
+
 set(ENGINE_SOURCES
         src/pch.cpp
         src/pch.h
@@ -113,6 +153,8 @@ add_executable(kynetic
         src/main.cpp
         ${ENGINE_SOURCES}
 )
+
+add_dependencies(kynetic shaders)
 
 target_link_libraries(kynetic PRIVATE
         glfw
