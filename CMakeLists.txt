@@ -39,6 +39,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vk-bootstrap)
 
+# VMA (Vulkan Memory Allocator)
+FetchContent_Declare(
+        vma
+        GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+        GIT_TAG v3.3.0
+)
+FetchContent_MakeAvailable(vma)
+
+target_include_directories(VulkanMemoryAllocator SYSTEM INTERFACE
+        ${vma_SOURCE_DIR}/include
+)
 
 # ImGui (docking)
 FetchContent_Declare(
@@ -147,6 +158,8 @@ set(ENGINE_SOURCES
         src/Engine/Renderer/CommandPool.h
         src/Engine/UI/ImGuiRenderer.cpp
         src/Engine/UI/ImGuiRenderer.h
+        src/Engine/Renderer/Buffer.cpp
+        src/Engine/Renderer/Buffer.h
 )
 
 add_executable(kynetic
@@ -161,6 +174,7 @@ target_link_libraries(kynetic PRIVATE
         vk-bootstrap
         vk-bootstrap-compiler-warnings
         Vulkan::Headers
+        VulkanMemoryAllocator
         imgui
         imguizmo
         fastgltf

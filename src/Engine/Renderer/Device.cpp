@@ -10,6 +10,7 @@ Device::Device(GLFWwindow *window, const VkAllocationCallbacks *allocator) {
     create_instance();
     create_surface(window, allocator);
     create_device();
+    create_allocator();
 
     auto graphics_queue_result = m_device.get_queue(vkb::QueueType::graphics);
     if (!graphics_queue_result.has_value()) {
@@ -27,6 +28,7 @@ Device::Device(GLFWwindow *window, const VkAllocationCallbacks *allocator) {
 }
 
 Device::~Device() {
+    vmaDestroyAllocator(m_allocator);
     vkb::destroy_device(m_device);
     vkb::destroy_surface(m_instance, m_surface);
     vkb::destroy_instance(m_instance);
@@ -71,6 +73,18 @@ void Device::create_device() {
 
     m_device = device_result.value();
     m_disp = m_device.make_table();
+}
+
+void Device::create_allocator() {
+    VmaAllocatorCreateInfo allocator_info = {};
+    allocator_info.physicalDevice = m_device.physical_device;
+    allocator_info.device = m_device.device;
+    allocator_info.instance = m_instance.instance;
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
+
+    if (vmaCreateAllocator(&allocator_info, &m_allocator) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create VMA allocator");
+    }
 }
 
 } // Kynetic
