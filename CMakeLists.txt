@@ -31,6 +31,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glfw)
 
+# glm
+FetchContent_Declare(
+        glm
+        GIT_REPOSITORY	https://github.com/g-truc/glm.git
+        GIT_TAG 1.0.1
+)
+FetchContent_MakeAvailable(glm)
+
 # vk-bootstrap
 FetchContent_Declare(
         vk-bootstrap
@@ -178,6 +186,7 @@ target_link_libraries(kynetic PRIVATE
         imgui
         imguizmo
         fastgltf
+        glm::glm
 )
 
 target_compile_features(kynetic PRIVATE cxx_std_23)

@@ -8,13 +8,22 @@
 #include <utility>
 #include <cmath>
 
+#include "imgui.h"
+#include "ImGuizmo.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
 #include "GLFW/glfw3.h"
 
+#include "glm/glm.hpp"
+
 #include "vulkan/vulkan_core.h"
 #include "VkBootstrap.h"
+
+// #define VMA_DEBUG_LOG(format, ...) do { \
+// printf(format __VA_OPT__(,) __VA_ARGS__); \
+// printf("\n"); \
+// } while(false)
 
 #ifdef _MSC_VER
 #pragma warning(push, 4)
@@ -52,8 +61,5 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
-
-#include "imgui.h"
-#include "ImGuizmo.h"
 
 std::vector<char> read_file(const std::string& filename);

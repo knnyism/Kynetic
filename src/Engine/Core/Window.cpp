@@ -11,7 +11,9 @@ Window::Window(const int width, const int height, const char *title) {
         throw std::runtime_error("Failed to initialise GLFW");
     }
 
+    //glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
     m_window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
     if (m_window == nullptr) {

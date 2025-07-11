@@ -80,7 +80,7 @@ void Device::create_allocator() {
     allocator_info.physicalDevice = m_device.physical_device;
     allocator_info.device = m_device.device;
     allocator_info.instance = m_instance.instance;
-    allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
+    allocator_info.vulkanApiVersion = m_instance.api_version;
 
     if (vmaCreateAllocator(&allocator_info, &m_allocator) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create VMA allocator");

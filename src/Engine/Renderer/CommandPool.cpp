@@ -31,8 +31,8 @@ std::vector<VkCommandBuffer> CommandPool::allocate_buffers(uint32_t count) const
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = m_cmd_pool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = m_cmd_pool;
     allocInfo.commandBufferCount = static_cast<uint32_t>(buffers.size());
 
     if (m_device.m_disp.allocateCommandBuffers(&allocInfo, buffers.data()) != VK_SUCCESS) {

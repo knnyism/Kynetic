@@ -6,6 +6,7 @@
 #include "Engine/Renderer/Device.h"
 #include "Engine/Renderer/Swapchain.h"
 #include "Engine/Renderer/CommandPool.h"
+#include "Engine/Renderer/Buffer.h"
 #include "Engine/UI/ImGuiRenderer.h"
 
 #include "App.h"
@@ -27,7 +28,6 @@ App::App() {
     m_cmd_bufs = m_cmd_pool->allocate_buffers(m_swapchain->get_image_count());
 
     create_graphics_pipeline();
-
     initialize_callbacks();
 
     m_imgui_renderer = std::make_unique<ImGuiRenderer>(*m_window, *m_device, *m_swapchain, m_render_pass);
@@ -56,12 +56,17 @@ int App::draw_frame() {
         return 0;
     }
 
+    buffers_queued_for_destruction.clear();
+
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     m_device->m_disp.resetCommandBuffer(m_cmd_bufs[image_index], 0);
     m_device->m_disp.beginCommandBuffer(m_cmd_bufs[image_index], &beginInfo);
+
+    create_vertex_buffer(m_cmd_bufs[image_index], buffers_queued_for_destruction);
+    create_index_buffer(m_cmd_bufs[image_index], buffers_queued_for_destruction);
 
     VkRenderPassBeginInfo renderPassInfo = {};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -91,7 +96,13 @@ int App::draw_frame() {
     m_device->m_disp.cmdSetViewport(m_cmd_bufs[image_index], 0, 1, &viewport);
     m_device->m_disp.cmdSetScissor(m_cmd_bufs[image_index], 0, 1, &scissor);
     m_device->m_disp.cmdBindPipeline(m_cmd_bufs[image_index], VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-    m_device->m_disp.cmdDraw(m_cmd_bufs[image_index], 3, 1, 0, 0);
+
+    const VkBuffer vertexBuffers[] = {m_vertex_buffer->get()};
+    constexpr VkDeviceSize offsets[] = {0};
+
+    m_device->m_disp.cmdBindVertexBuffers(m_cmd_bufs[image_index], 0, 1, vertexBuffers, offsets);
+    m_device->m_disp.cmdBindIndexBuffer(m_cmd_bufs[image_index], m_index_buffer->get(), 0, VK_INDEX_TYPE_UINT16);
+    m_device->m_disp.cmdDrawIndexed(m_cmd_bufs[image_index], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     m_imgui_renderer->render_draw_data(m_cmd_bufs[image_index]);
 

@@ -7,6 +7,7 @@
 #include "CommandPool.h"
 #include "Shader.h"
 #include "Renderer.h"
+#include "Buffer.h"
 
 namespace Kynetic {
 
@@ -15,6 +16,9 @@ Renderer::~Renderer() {
     m_device->m_disp.destroyPipelineLayout(m_layout, nullptr);
 
     m_device->m_disp.destroyRenderPass(m_render_pass, nullptr);
+
+    delete m_vertex_buffer;
+    delete m_index_buffer;
 }
 
 void Renderer::create_render_pass() {
@@ -68,29 +72,46 @@ void Renderer::create_graphics_pipeline() {
         throw std::runtime_error("Failed to create shader modules");
     }
 
-    VkPipelineShaderStageCreateInfo vertStageInfo = {};
-    vertStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertStageInfo.module = vert_shader.module();
-    vertStageInfo.pName = "main";
+    std::array<VkVertexInputAttributeDescription, 2> attribute_descriptions{};
+    attribute_descriptions[0].binding = 0;
+    attribute_descriptions[0].location = 0;
+    attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attribute_descriptions[0].offset = offsetof(Vertex, pos);
+    attribute_descriptions[1].binding = 0;
+    attribute_descriptions[1].location = 1;
+    attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attribute_descriptions[1].offset = offsetof(Vertex, color);
 
-    VkPipelineShaderStageCreateInfo fragStageInfo = {};
-    fragStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragStageInfo.module = frag_shader.module();
-    fragStageInfo.pName = "main";
+    VkVertexInputBindingDescription binding_description{};
+    binding_description.binding = 0;
+    binding_description.stride = sizeof(Vertex);
+    binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    VkPipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+    VkPipelineShaderStageCreateInfo vert_stage_info = {};
+    vert_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_stage_info.module = vert_shader.module();
+    vert_stage_info.pName = "main";
 
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    VkPipelineShaderStageCreateInfo frag_stage_info = {};
+    frag_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_stage_info.module = frag_shader.module();
+    frag_stage_info.pName = "main";
 
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
-    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
+    VkPipelineShaderStageCreateInfo shader_stages[] = { vert_stage_info, frag_stage_info };
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
+    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descriptions.size());
+    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions.data();
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
+    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport = {};
     viewport.x = 0.0f;
@@ -104,12 +125,12 @@ void Renderer::create_graphics_pipeline() {
     scissor.offset = { 0, 0 };
     scissor.extent = m_swapchain->get_extent();
 
-    VkPipelineViewportStateCreateInfo viewportState = {};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
+    VkPipelineViewportStateCreateInfo viewport_state = {};
+    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state.viewportCount = 1;
+    viewport_state.pViewports = &viewport;
+    viewport_state.scissorCount = 1;
+    viewport_state.pScissors = &scissor;
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -131,52 +152,76 @@ void Renderer::create_graphics_pipeline() {
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
-    VkPipelineColorBlendStateCreateInfo colorBlending = {};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    colorBlending.blendConstants[0] = 0.0f;
-    colorBlending.blendConstants[1] = 0.0f;
-    colorBlending.blendConstants[2] = 0.0f;
-    colorBlending.blendConstants[3] = 0.0f;
+    VkPipelineColorBlendStateCreateInfo color_blending = {};
+    color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blending.logicOpEnable = VK_FALSE;
+    color_blending.logicOp = VK_LOGIC_OP_COPY;
+    color_blending.attachmentCount = 1;
+    color_blending.pAttachments = &colorBlendAttachment;
+    color_blending.blendConstants[0] = 0.0f;
+    color_blending.blendConstants[1] = 0.0f;
+    color_blending.blendConstants[2] = 0.0f;
+    color_blending.blendConstants[3] = 0.0f;
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {};
+    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_info.setLayoutCount = 0;
+    pipeline_layout_info.pushConstantRangeCount = 0;
 
-    if (m_device->m_disp.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_layout) != VK_SUCCESS) {
+    if (m_device->m_disp.createPipelineLayout(&pipeline_layout_info, nullptr, &m_layout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
 
     std::vector<VkDynamicState> dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
-    VkPipelineDynamicStateCreateInfo dynamicInfo = {};
-    dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicInfo.pDynamicStates = dynamicStates.data();
+    VkPipelineDynamicStateCreateInfo dynamic_info = {};
+    dynamic_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic_info.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamic_info.pDynamicStates = dynamicStates.data();
 
-    VkGraphicsPipelineCreateInfo pipelineInfo = {};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicInfo;
-    pipelineInfo.layout = m_layout;
-    pipelineInfo.renderPass = m_render_pass;
-    pipelineInfo.subpass = 0;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+    VkGraphicsPipelineCreateInfo pipeline_info = {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_info.stageCount = 2;
+    pipeline_info.pStages = shader_stages;
+    pipeline_info.pVertexInputState = &vertex_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly;
+    pipeline_info.pViewportState = &viewport_state;
+    pipeline_info.pRasterizationState = &rasterizer;
+    pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pColorBlendState = &color_blending;
+    pipeline_info.pDynamicState = &dynamic_info;
+    pipeline_info.layout = m_layout;
+    pipeline_info.renderPass = m_render_pass;
+    pipeline_info.subpass = 0;
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline) != VK_SUCCESS) {
+    if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
+}
+
+void Renderer::create_vertex_buffer(const VkCommandBuffer cmd_buf, std::vector<Buffer>& buffers_queued_for_destruction) {
+    if (m_vertex_buffer) return;
+
+    const VkDeviceSize buffer_size = sizeof(Vertex) * vertices.size();
+
+    auto& staging_buffer = buffers_queued_for_destruction.emplace_back(*m_device, buffer_size, BufferUsage::Staging);
+    staging_buffer.copy_data(vertices.data(), buffer_size);
+
+    m_vertex_buffer = new Buffer(*m_device, buffer_size, BufferUsage::Vertex);
+    m_vertex_buffer->copy_from_staging(staging_buffer, cmd_buf);
+}
+
+void Renderer::create_index_buffer(const VkCommandBuffer cmd_buf, std::vector<Buffer>& buffers_queued_for_destruction) {
+    if (m_index_buffer) return;
+
+    const VkDeviceSize buffer_size = sizeof(uint16_t) * indices.size();
+
+    auto& staging_buffer = buffers_queued_for_destruction.emplace_back(*m_device, buffer_size, BufferUsage::Staging);
+    staging_buffer.copy_data(indices.data(), buffer_size);
+
+    m_index_buffer = new Buffer(*m_device, buffer_size, BufferUsage::Index);
+    m_index_buffer->copy_from_staging(staging_buffer, cmd_buf);
 }
 
 } // Kynetic

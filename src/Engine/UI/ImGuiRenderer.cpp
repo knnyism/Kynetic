@@ -18,6 +18,7 @@ ImGuiRenderer::ImGuiRenderer(const Window &window, const Device &device, const S
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowRounding = 5.3f;
@@ -116,6 +117,11 @@ void ImGuiRenderer::new_frame() {
 
 void ImGuiRenderer::render() {
     ImGui::Render();
+
+    if (const ImGuiIO& io = ImGui::GetIO(); io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+        ImGui::UpdatePlatformWindows();
+        ImGui::RenderPlatformWindowsDefault();
+    }
 }
 
 void ImGuiRenderer::render_draw_data(const VkCommandBuffer& cmd_buf) {
