@@ -2,12 +2,11 @@
 // Created by kenny on 3-7-25.
 //
 
+#include "Common.h"
 #include "Device.h"
 #include "Swapchain.h"
 
 namespace Kynetic {
-
-constexpr int MAX_FRAMES_IN_FLIGHT = 3;
 
 Swapchain::Swapchain(const Device &device) : m_device(device) {
     create_swapchain();

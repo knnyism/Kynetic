@@ -27,7 +27,13 @@ App::App() {
     m_swapchain->create_framebuffers(m_render_pass);
     m_cmd_bufs = m_cmd_pool->allocate_buffers(m_swapchain->get_image_count());
 
+    create_descriptor_set_layout();
     create_graphics_pipeline();
+
+    create_uniform_buffers();
+    create_descriptor_pool();
+    create_descriptor_sets();
+
     initialize_callbacks();
 
     m_imgui_renderer = std::make_unique<ImGuiRenderer>(*m_window, *m_device, *m_swapchain, m_render_pass);
@@ -57,6 +63,8 @@ int App::draw_frame() {
     }
 
     buffers_queued_for_destruction.clear();
+
+    update_ubo(image_index);
 
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -102,6 +110,7 @@ int App::draw_frame() {
 
     m_device->m_disp.cmdBindVertexBuffers(m_cmd_bufs[image_index], 0, 1, vertexBuffers, offsets);
     m_device->m_disp.cmdBindIndexBuffer(m_cmd_bufs[image_index], m_index_buffer->get(), 0, VK_INDEX_TYPE_UINT16);
+    m_device->m_disp.cmdBindDescriptorSets(m_cmd_bufs[image_index], VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptor_sets[image_index], 0, nullptr);
     m_device->m_disp.cmdDrawIndexed(m_cmd_bufs[image_index], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     m_imgui_renderer->render_draw_data(m_cmd_bufs[image_index]);

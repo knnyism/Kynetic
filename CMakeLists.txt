@@ -168,6 +168,7 @@ set(ENGINE_SOURCES
         src/Engine/UI/ImGuiRenderer.h
         src/Engine/Renderer/Buffer.cpp
         src/Engine/Renderer/Buffer.h
+        src/Engine/Renderer/Common.h
 )
 
 add_executable(kynetic

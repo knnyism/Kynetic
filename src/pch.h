@@ -1,6 +1,7 @@
 #pragma once
 
 #define GLFW_INCLUDE_VULKAN
+#define GLM_FORCE_RADIANS
 
 #include <print>
 #include <fstream>
@@ -15,7 +16,8 @@
 
 #include "GLFW/glfw3.h"
 
-#include "glm/glm.hpp"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "vulkan/vulkan_core.h"
 #include "VkBootstrap.h"
@@ -61,5 +63,6 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+
 
 std::vector<char> read_file(const std::string& filename);

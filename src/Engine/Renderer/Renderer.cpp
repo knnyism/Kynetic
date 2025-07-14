@@ -2,6 +2,7 @@
 // Created by kenny on 3-7-25.
 //
 
+#include "Common.h"
 #include "Device.h"
 #include "Swapchain.h"
 #include "CommandPool.h"
@@ -12,6 +13,9 @@
 namespace Kynetic {
 
 Renderer::~Renderer() {
+    m_device->m_disp.destroyDescriptorPool(m_descriptor_pool, nullptr);
+    m_device->m_disp.destroyDescriptorSetLayout(m_descriptor_set_layout, nullptr);
+
     m_device->m_disp.destroyPipeline(m_pipeline, nullptr);
     m_device->m_disp.destroyPipelineLayout(m_layout, nullptr);
 
@@ -139,7 +143,7 @@ void Renderer::create_graphics_pipeline() {
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
     VkPipelineMultisampleStateCreateInfo multisampling = {};
@@ -165,7 +169,8 @@ void Renderer::create_graphics_pipeline() {
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = {};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &m_descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 0;
 
     if (m_device->m_disp.createPipelineLayout(&pipeline_layout_info, nullptr, &m_layout) != VK_SUCCESS) {
@@ -195,9 +200,96 @@ void Renderer::create_graphics_pipeline() {
     pipeline_info.subpass = 0;
     pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline) != VK_SUCCESS) {
+    if (m_device->m_disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline) !=
+        VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
+}
+
+void Renderer::create_descriptor_set_layout() {
+    VkDescriptorSetLayoutBinding ubo_layout_binding{};
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = 1;
+    layout_info.pBindings = &ubo_layout_binding;
+
+    if (m_device->m_disp.createDescriptorSetLayout(&layout_info, nullptr, &m_descriptor_set_layout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout");
+    };
+}
+
+void Renderer::create_descriptor_pool() {
+    VkDescriptorPoolSize pool_size{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    pool_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+    if (m_device->m_disp.createDescriptorPool(&pool_info, nullptr, &m_descriptor_pool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor pool");
+    }
+}
+
+void Renderer::create_descriptor_sets() {
+    const std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptor_set_layout);
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = m_descriptor_pool;
+    alloc_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    alloc_info.pSetLayouts = layouts.data();
+
+    m_descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (m_device->m_disp.allocateDescriptorSets(&alloc_info, m_descriptor_sets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate descriptor sets");
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = m_uniform_buffers[i].get();
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet decriptor_write{};
+        decriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        decriptor_write.dstSet = m_descriptor_sets[i];
+        decriptor_write.dstBinding = 0;
+        decriptor_write.dstArrayElement = 0;
+        decriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        decriptor_write.descriptorCount = 1;
+        decriptor_write.pBufferInfo = &buffer_info;
+
+        m_device->m_disp.updateDescriptorSets(1, &decriptor_write, 0, nullptr);
+    }
+}
+
+void Renderer::create_uniform_buffers() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        constexpr VkDeviceSize buffer_size = sizeof(UniformBufferObject);
+        m_uniform_buffers.emplace_back(*m_device, buffer_size, BufferUsage::Uniform);
+    }
+}
+
+void Renderer::update_ubo(uint32_t image_index) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    const auto currentTime = std::chrono::high_resolution_clock::now();
+    const float time = std::chrono::duration<float>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), static_cast<float>(m_swapchain->get_extent().width) / static_cast<float>(m_swapchain->get_extent().height), 0.1f, 10.0f);
+
+    ubo.proj[1][1] *= -1;
+    m_uniform_buffers[image_index].copy_data(&ubo, sizeof(ubo));
 }
 
 void Renderer::create_vertex_buffer(const VkCommandBuffer cmd_buf, std::vector<Buffer>& buffers_queued_for_destruction) {

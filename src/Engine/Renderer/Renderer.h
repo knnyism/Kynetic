@@ -17,7 +17,7 @@ struct Vertex {
     glm::vec2 pos;
     glm::vec3 color;
 
-    static VkVertexInputBindingDescription getBindingDescription() {
+    static VkVertexInputBindingDescription get_binding_description() {
         VkVertexInputBindingDescription bindingDescription{};
         bindingDescription.binding = 0;
         bindingDescription.stride = sizeof(Vertex);
@@ -25,6 +25,12 @@ struct Vertex {
 
         return bindingDescription;
     }
+};
+
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 class Renderer {
@@ -35,9 +41,7 @@ protected:
         {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
         {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
     };
-    const std::vector<uint16_t> indices = {
-        0, 1, 2, 2, 3, 0
-    };
+    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
 
     std::vector<Buffer> buffers_queued_for_destruction;
 
@@ -49,17 +53,30 @@ protected:
 
     VkRenderPass m_render_pass = VK_NULL_HANDLE;
     VkPipeline m_pipeline = VK_NULL_HANDLE;
+
     VkPipelineLayout m_layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
+    VkDescriptorPool m_descriptor_pool;
+    std::vector<VkDescriptorSet> m_descriptor_sets;
 
     Buffer* m_vertex_buffer = nullptr;
     Buffer* m_index_buffer = nullptr;
-
+    std::vector<Buffer> m_uniform_buffers;
 public:
     Renderer() = default;
     ~Renderer();
 
     void create_render_pass();
     void create_graphics_pipeline();
+    void create_descriptor_set_layout();
+
+    void create_descriptor_pool();
+
+    void create_descriptor_sets();
+
+    void create_uniform_buffers();
+
+    void update_ubo(uint32_t image_index);
 
     void create_vertex_buffer(VkCommandBuffer cmd_buf, std::vector<Buffer> &buffers_queued_for_destruction);
     void create_index_buffer(VkCommandBuffer cmd_buf, std::vector<Buffer> &buffers_queued_for_destruction);
