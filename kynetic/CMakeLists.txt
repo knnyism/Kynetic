@@ -154,6 +154,14 @@ elseif (APPLE)
     target_compile_definitions(kynetic PUBLIC VK_USE_PLATFORM_MACOS_MVK)
 endif ()
 
+if (MSVC)
+    target_compile_options(kynetic PRIVATE /W4 /WX)
+else ()
+    target_compile_options(kynetic PRIVATE
+            -Wall -Wextra -Wpedantic -Werror
+            -Wno-missing-field-initializers)
+endif ()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(kynetic PUBLIC DEBUG)
 endif ()

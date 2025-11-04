@@ -7,11 +7,9 @@
 namespace kynetic
 {
 
-class Device;
-
 class Engine
 {
-    std::unique_ptr<Device> m_device;
+    std::unique_ptr<class Device> m_device;
 
 public:
     Engine();
@@ -21,6 +19,8 @@ public:
     Engine(Engine&&) = delete;
     Engine& operator=(const Engine&) = delete;
     Engine& operator=(Engine&&) = delete;
+
+    Engine& get();
 
     void init();
     void shutdown();

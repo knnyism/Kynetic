@@ -12,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <deque>
+#include <thread>
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
@@ -32,3 +33,5 @@
             abort();                                                       \
         }                                                                  \
     } while (0)
+
+constexpr bool USE_VALIDATION_LAYERS = true;
