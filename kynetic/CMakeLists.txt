@@ -114,6 +114,35 @@ FetchContent_MakeAvailable(stb)
 add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE ${stb_SOURCE_DIR})
 
+function(compile_shader target shader_file)
+    get_filename_component(shader_name ${shader_file} NAME)
+    set(output_file "src/shaders/${shader_name}.spv")
+
+    file(MAKE_DIRECTORY "src/shaders")
+
+    add_custom_command(
+            OUTPUT ${output_file}
+            COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
+            COMMENT "Compiling shader ${shader_name}"
+    )
+
+    target_sources(${target} PRIVATE ${output_file})
+endfunction()
+
+file(GLOB_RECURSE SHADER_FILES
+        "src/shaders/*.vert"
+        "src/shaders/*.frag"
+        "src/shaders/*.comp"
+)
+
+add_custom_target(shaders)
+
+foreach (shader ${SHADER_FILES})
+    file(RELATIVE_PATH shader_rel ${CMAKE_CURRENT_SOURCE_DIR} ${shader})
+    compile_shader(shaders ${shader_rel})
+endforeach ()
+
 file(GLOB_RECURSE KYNETIC_SOURCES "src/*.cpp")
 file(GLOB_RECURSE KYNETIC_HEADERS "src/*.hpp")
 
@@ -121,6 +150,8 @@ add_library(kynetic STATIC
         ${KYNETIC_SOURCES}
         ${KYNETIC_HEADERS}
 )
+
+add_dependencies(kynetic shaders)
 
 target_link_libraries(kynetic PUBLIC
         SDL3::SDL3

@@ -2,7 +2,9 @@
 // Created by kennypc on 11/4/25.
 //
 
-#include "rendering/device.hpp"
+#include "device.hpp"
+#include "renderer.hpp"
+
 #include "engine.hpp"
 
 using namespace kynetic;
@@ -15,15 +17,26 @@ Engine::Engine()
     engine = this;
 
     m_device = std::make_unique<Device>();
+    m_renderer = std::make_unique<Renderer>();
 }
 
-Engine::~Engine() {}
+Engine::~Engine()
+{
+    assert(is_shutting_down);
+    engine = nullptr;
+}
 
 Engine& Engine::get() { return *engine; }
 
 void Engine::init() {}
 
-void Engine::shutdown() {}
+void Engine::shutdown()
+{
+    assert(!is_shutting_down);
+    is_shutting_down = true;
+
+    m_device->wait_idle();
+}
 
 void Engine::update()
 {
@@ -38,7 +51,7 @@ void Engine::update()
         }
 
         m_device->begin_frame();
-
+        m_renderer->render();
         m_device->end_frame();
     }
 }

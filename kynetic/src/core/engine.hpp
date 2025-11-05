@@ -6,10 +6,12 @@
 
 namespace kynetic
 {
-
 class Engine
 {
     std::unique_ptr<class Device> m_device;
+    std::unique_ptr<class Renderer> m_renderer;
+
+    bool is_shutting_down{false};
 
 public:
     Engine();
@@ -20,7 +22,8 @@ public:
     Engine& operator=(const Engine&) = delete;
     Engine& operator=(Engine&&) = delete;
 
-    Engine& get();
+    [[nodiscard]] static Engine& get();
+    [[nodiscard]] Device& get_device() const { return *m_device; }
 
     void init();
     void shutdown();
