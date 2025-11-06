@@ -102,6 +102,25 @@ VkSemaphoreCreateInfo vk_init::semaphore_create_info(const VkSemaphoreCreateFlag
 {
     return {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = flags};
 }
+
+VkRenderingInfo vk_init::rendering_info(VkExtent2D render_extent,
+                                        VkRenderingAttachmentInfo* color_attachment,
+                                        VkRenderingAttachmentInfo* depth_attachment)
+{
+    VkRenderingInfo render_info{};
+    render_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    render_info.pNext = nullptr;
+
+    render_info.renderArea = VkRect2D{VkOffset2D{0, 0}, render_extent};
+    render_info.layerCount = 1;
+    render_info.colorAttachmentCount = 1;
+    render_info.pColorAttachments = color_attachment;
+    render_info.pDepthAttachment = depth_attachment;
+    render_info.pStencilAttachment = nullptr;
+
+    return render_info;
+}
+
 VkImageSubresourceRange vk_init::image_subresource_range(VkImageAspectFlags aspect_mask)
 {
     return {.aspectMask = aspect_mask,
@@ -190,6 +209,26 @@ VkImageViewCreateInfo vk_init::imageview_create_info(const VkFormat format,
             }};
 }
 
+VkRenderingAttachmentInfo vk_init::attachment_info(VkImageView view,
+                                                   VkClearValue* clear,
+                                                   VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
+{
+    VkRenderingAttachmentInfo color_attachment{};
+    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color_attachment.pNext = nullptr;
+
+    color_attachment.imageView = view;
+    color_attachment.imageLayout = layout;
+    color_attachment.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    if (clear)
+    {
+        color_attachment.clearValue = *clear;
+    }
+
+    return color_attachment;
+}
+
 void vk_util::transition_image(VkCommandBuffer command_buffer,
                                VkImage image,
                                VkImageLayout current_layout,
@@ -255,4 +294,70 @@ void vk_util::copy_image_to_image(VkCommandBuffer command_bufferr,
     blitInfo.pRegions = &blit_region;
 
     vkCmdBlitImage2(command_bufferr, &blitInfo);
+}
+
+VkDescriptorType vk_util::slang_to_vk_descriptor_type(const slang::BindingType type)
+{
+    switch (type)
+    {
+        case slang::BindingType::Sampler:
+            return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case slang::BindingType::CombinedTextureSampler:
+            return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case slang::BindingType::Texture:
+            return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        case slang::BindingType::MutableTexture:
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case slang::BindingType::TypedBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+        case slang::BindingType::MutableTypedBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+        case slang::BindingType::RawBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case slang::BindingType::MutableRawBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case slang::BindingType::ConstantBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case slang::BindingType::InputRenderTarget:
+            return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        case slang::BindingType::InlineUniformData:
+            return VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK;
+        case slang::BindingType::RayTracingAccelerationStructure:
+            return VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        default:
+            KX_ASSERT_MSG(false, "Unknown binding type");
+    }
+}
+
+VkShaderStageFlags vk_util::slang_to_vk_stage(const SlangStage stage)
+{
+    switch (stage)
+    {
+        case SLANG_STAGE_VERTEX:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case SLANG_STAGE_FRAGMENT:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case SLANG_STAGE_COMPUTE:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        case SLANG_STAGE_GEOMETRY:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case SLANG_STAGE_RAY_GENERATION:
+            return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        case SLANG_STAGE_INTERSECTION:
+            return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+        case SLANG_STAGE_ANY_HIT:
+            return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        case SLANG_STAGE_CLOSEST_HIT:
+            return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        case SLANG_STAGE_MISS:
+            return VK_SHADER_STAGE_MISS_BIT_KHR;
+        case SLANG_STAGE_CALLABLE:
+            return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+        case SLANG_STAGE_MESH:
+            return VK_SHADER_STAGE_MESH_BIT_EXT;
+        case SLANG_STAGE_AMPLIFICATION:
+            return VK_SHADER_STAGE_TASK_BIT_EXT;
+        default:
+            return VK_SHADER_STAGE_ALL;
+    }
 }

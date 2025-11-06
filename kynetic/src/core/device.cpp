@@ -10,6 +10,13 @@
 #include "core/device.hpp"
 #include "rendering/swapchain.hpp"
 
+KX_DISABLE_WARNING_PUSH
+KX_DISABLE_WARNING_OUTSIDE_RANGE
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_vulkan.h"
+KX_DISABLE_WARNING_POP
+
 using namespace kynetic;
 
 Device::Device()
@@ -85,11 +92,68 @@ Device::Device()
                                              .instance = m_instance};
     vmaCreateAllocator(&allocator_info, &m_allocator);
 
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}};
+    m_descriptor_allocator.init_pool(m_device, 1000, sizes);
+
+    VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &imgui_command_pool));
+    VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(imgui_command_pool, 1);
+    VK_CHECK(vkAllocateCommandBuffers(m_device, &cmdAllocInfo, &imgui_command_buffer));
+
+    VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+                                         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+                                         {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+                                         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+                                         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+                                         {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    VK_CHECK(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &imgui_descriptor_pool));
+
+    ImGui::CreateContext();
+
+    ImGui_ImplSDL3_InitForVulkan(m_window);
+
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = m_instance;
+    init_info.PhysicalDevice = m_physical_device;
+    init_info.Device = m_device;
+    init_info.Queue = m_graphics_queue;
+    init_info.DescriptorPool = imgui_descriptor_pool;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+    init_info.UseDynamicRendering = true;
+
+    // dynamic rendering parameters for imgui to use
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &m_swapchain->m_image_format;
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info);
+
     createGlobalSession(m_slang_session.writeRef());
 }
 
 Device::~Device()
 {
+    ImGui_ImplVulkan_Shutdown();
+    vkDestroyDescriptorPool(m_device, imgui_descriptor_pool, nullptr);
+
+    vkDestroyCommandPool(m_device, imgui_command_pool, nullptr);
+
+    m_descriptor_allocator.destroy_pool(m_device);
+
     vmaDestroyAllocator(m_allocator);
 
     for (auto& ctx : m_ctxs)
@@ -122,6 +186,10 @@ void Device::wait_until_safe_for_rendering() const
 
 void Device::begin_frame()
 {
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
     wait_until_safe_for_rendering();
 
     auto& ctx = get_context();
@@ -140,7 +208,19 @@ void Device::begin_frame()
 
 void Device::end_frame()
 {
+    ImGui::Render();
+
     const auto& ctx = get_context();
+
+    VkRenderingAttachmentInfo colorAttachment =
+        vk_init::attachment_info(m_swapchain->get_image_view(), nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo renderInfo = vk_init::rendering_info(m_swapchain->m_extent, &colorAttachment, nullptr);
+
+    vkCmdBeginRendering(ctx.dcb, &renderInfo);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.dcb);
+    vkCmdEndRendering(ctx.dcb);
+
+    vk_util::transition_image(ctx.dcb, m_swapchain->get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     VK_CHECK(vkEndCommandBuffer(ctx.dcb));
 
@@ -188,6 +268,8 @@ void Device::update()
             default:
                 break;
         }
+
+        ImGui_ImplSDL3_ProcessEvent(&event);
     }
 }
 

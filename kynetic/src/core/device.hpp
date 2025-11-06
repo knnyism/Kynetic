@@ -51,6 +51,12 @@ class Device
 
     class Swapchain* m_swapchain{nullptr};
 
+    VkCommandPool imgui_command_pool;
+    VkCommandBuffer imgui_command_buffer;
+    VkDescriptorPool imgui_descriptor_pool;
+
+    DescriptorAllocator m_descriptor_allocator;
+
     Slang::ComPtr<slang::IGlobalSession> m_slang_session;
 
     int m_frame_count{0};
@@ -81,6 +87,8 @@ public:
 
     [[nodiscard]] Slang::ComPtr<slang::IGlobalSession>& get_slang_session() { return m_slang_session; }
     [[nodiscard]] const Slang::ComPtr<slang::IGlobalSession>& get_slang_session() const { return m_slang_session; }
+
+    [[nodiscard]] DescriptorAllocator& get_descriptor_allocator() { return m_descriptor_allocator; }
 
     [[nodiscard]] const VkImage& get_render_target() const;
 

@@ -30,6 +30,7 @@ class Swapchain
     Swapchain& operator=(Swapchain&& other) noexcept;
 
     [[nodiscard]] const VkImage& get_image() const { return m_images[m_image_index]; };
+    [[nodiscard]] const VkImageView& get_image_view() const { return m_image_views[m_image_index]; };
 
     void swap(VkSemaphore semaphore);
 };

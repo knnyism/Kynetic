@@ -14,6 +14,7 @@
 #include <deque>
 #include <thread>
 #include <filesystem>
+#include <map>
 
 #include "slang.h"
 #include "slang-com-ptr.h"
@@ -63,6 +64,45 @@
             std::abort();                                                                          \
         }                                                                                          \
     } while (0)
+
+// clang-format off
+// NOLINTBEGIN
+#if defined(__clang__) || defined(__GNUC__)
+#define KX_DO_PRAGMA(X) _Pragma(#X)
+#define KX_DISABLE_WARNING_PUSH KX_DO_PRAGMA(GCC diagnostic push)
+#define KX_DISABLE_WARNING_POP KX_DO_PRAGMA(GCC diagnostic pop)
+#define KX_DISABLE_WARNING(warningName) KX_DO_PRAGMA(GCC diagnostic ignored #warningName)
+#define KX_DISABLE_WARNING_DEPRECATED_DECLARATIONS KX_DISABLE_WARNING(-Wdeprecated-declarations)
+#define KX_DISABLE_WARNING_HIDES_LOCAL_DECLARATION KX_DISABLE_WARNING(-Wshadow)
+#define KX_DISABLE_WARNING_MISSING_FIELD_INITIALIZERS KX_DISABLE_WARNING(-Wmissing-field-initializers)
+#define KX_DISABLE_WARNING_NAMELESS_STRUCT
+#define KX_DISABLE_WARNING_SIGNED_UNSIGNED_COMPARISON_MISMATCH KX_DISABLE_WARNING(-Wsign-conversion)
+#define KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH KX_DISABLE_WARNING(-Wsign-conversion)
+#define KX_DISABLE_WARNING_SIZE_T_CONVERSION KX_DISABLE_WARNING(-Wconversion)
+#define KX_DISABLE_WARNING_UNREFERENCED_LOCAL_VARIABLE KX_DISABLE_WARNING(-Wunused-variable)
+#define KX_DISABLE_WARNING_UNUSED_PARAMETER KX_DISABLE_WARNING(-Wunused-parameter)
+#define KX_DISABLE_WARNING_UNUSED_FUNCTION KX_DISABLE_WARNING(-Wunused-function)
+#define KX_DISABLE_WARNING_UNUSED_VARIABLE KX_DISABLE_WARNING(-Wunused-variable)
+#define KX_DISABLE_WARNING_OUTSIDE_RANGE KX_DISABLE_WARNING(-Wconversion)
+#else
+#define KX_DISABLE_WARNING_PUSH __pragma(warning(push))
+#define KX_DISABLE_WARNING_POP __pragma(warning(pop))
+#define KX_DISABLE_WARNING(warningNumber) __pragma(warning(disable : warningNumber))
+#define KX_DISABLE_WARNING_DEPRECATED_DECLARATIONS KX_DISABLE_WARNING(4996)
+#define KX_DISABLE_WARNING_HIDES_LOCAL_DECLARATION KX_DISABLE_WARNING(4456)
+#define KX_DISABLE_WARNING_MISSING_FIELD_INITIALIZERS KX_DISABLE_WARNING(4127)
+#define KX_DISABLE_WARNING_NAMELESS_STRUCT KX_DISABLE_WARNING(4201)
+#define KX_DISABLE_WARNING_SIGNED_UNSIGNED_COMPARISON_MISMATCH KX_DISABLE_WARNING(4018)
+#define KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH KX_DISABLE_WARNING(4245)
+#define KX_DISABLE_WARNING_SIZE_T_CONVERSION KX_DISABLE_WARNING(4267)
+#define KX_DISABLE_WARNING_UNREFERENCED_LOCAL_VARIABLE KX_DISABLE_WARNING(4101)
+#define KX_DISABLE_WARNING_UNUSED_PARAMETER KX_DISABLE_WARNING(4100)
+#define KX_DISABLE_WARNING_UNUSED_FUNCTION KX_DISABLE_WARNING(4505)
+#define KX_DISABLE_WARNING_UNUSED_VARIABLE KX_DISABLE_WARNING(4101)
+#define KX_DISABLE_WARNING_OUTSIDE_RANGE KX_DISABLE_WARNING(4244)
+#endif
+// NOLINTEND
+// clang-format on
 
 constexpr bool USE_VALIDATION_LAYERS = true;
 
@@ -205,4 +245,7 @@ void copy_image_to_image(VkCommandBuffer command_bufferr,
 
 void generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize);
 
+VkDescriptorType slang_to_vk_descriptor_type(slang::BindingType type);
+
+VkShaderStageFlags slang_to_vk_stage(SlangStage stage);
 }  // namespace vk_util

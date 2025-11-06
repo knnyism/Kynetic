@@ -9,23 +9,28 @@ namespace kynetic
 
 class Shader;
 
+struct ComputePushConstants
+{
+    glm::vec4 data1;
+    glm::vec4 data2;
+    glm::vec4 data3;
+    glm::vec4 data4;
+};
+
 class Renderer
 {
     friend class Engine;
 
     AllocatedImage m_draw_image;
-    DescriptorAllocator m_descriptor_allocator;
 
     DeletionQueue m_deletion_queue;
 
-    std::shared_ptr<Shader> m_gradient_shader;
-
-    VkDescriptorSet m_draw_image_descriptors;
-    VkDescriptorSetLayout m_draw_image_descriptor_layout;
+    std::shared_ptr<Shader> m_gradient;
+    VkDescriptorSet m_draw_image_descriptor_set;
     VkPipeline m_gradient_pipeline;
-    VkPipelineLayout m_gradient_pipeline_layout;
 
     int m_frame_count{0};
+    ComputePushConstants data;
 
 public:
     Renderer();

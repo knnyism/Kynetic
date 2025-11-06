@@ -3,12 +3,15 @@
 //
 
 #include "rendering/shader.hpp"
+#include "rendering/pipeline.hpp"
 
 #include "device.hpp"
 #include "engine.hpp"
 #include "resource_manager.hpp"
 
 #include "renderer.hpp"
+
+#include "imgui.h"
 
 using namespace kynetic;
 
@@ -25,18 +28,12 @@ Renderer::Renderer()
 
     m_deletion_queue.push_function([this, &device]() { device.destroy_image(m_draw_image); });
 
-    m_gradient_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang", "gradient");
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}};
+    m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang", "gradient");
 
-    m_descriptor_allocator.init_pool(device.get(), 10, sizes);
+    m_gradient_pipeline = ComputePipelineBuilder().set_shader(m_gradient).build(device.get());
+    m_deletion_queue.push_function([this, &device]() { vkDestroyPipeline(device.get(), m_gradient_pipeline, nullptr); });
 
-    {
-        DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        m_draw_image_descriptor_layout = builder.build(device.get(), VK_SHADER_STAGE_COMPUTE_BIT);
-    }
-
-    m_draw_image_descriptors = m_descriptor_allocator.allocate(device.get(), m_draw_image_descriptor_layout);
+    m_draw_image_descriptor_set = device.get_descriptor_allocator().allocate(device.get(), m_gradient->get_set_layout(0));
     VkDescriptorImageInfo imgInfo{};
     imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     imgInfo.imageView = m_draw_image.view;
@@ -46,70 +43,39 @@ Renderer::Renderer()
     drawImageWrite.pNext = nullptr;
 
     drawImageWrite.dstBinding = 0;
-    drawImageWrite.dstSet = m_draw_image_descriptors;
+    drawImageWrite.dstSet = m_draw_image_descriptor_set;
     drawImageWrite.descriptorCount = 1;
     drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     drawImageWrite.pImageInfo = &imgInfo;
 
     vkUpdateDescriptorSets(device.get(), 1, &drawImageWrite, 0, nullptr);
-
-    m_deletion_queue.push_function(
-        [&]()
-        {
-            m_descriptor_allocator.destroy_pool(device.get());
-            vkDestroyDescriptorSetLayout(device.get(), m_draw_image_descriptor_layout, nullptr);
-        });
-
-    VkPipelineLayoutCreateInfo computeLayout{};
-    computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    computeLayout.pNext = nullptr;
-    computeLayout.pSetLayouts = &m_draw_image_descriptor_layout;
-    computeLayout.setLayoutCount = 1;
-
-    VK_CHECK(vkCreatePipelineLayout(device.get(), &computeLayout, nullptr, &m_gradient_pipeline_layout));
-
-    VkPipelineShaderStageCreateInfo stageinfo{};
-    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stageinfo.pNext = nullptr;
-    stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stageinfo.module = m_gradient_shader->get_module();
-    stageinfo.pName = "main";
-
-    VkComputePipelineCreateInfo computePipelineCreateInfo{};
-    computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    computePipelineCreateInfo.pNext = nullptr;
-    computePipelineCreateInfo.layout = m_gradient_pipeline_layout;
-    computePipelineCreateInfo.stage = stageinfo;
-    VK_CHECK(
-        vkCreateComputePipelines(device.get(), VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &m_gradient_pipeline));
-
-    m_deletion_queue.push_function(
-        [&]()
-        {
-            vkDestroyPipelineLayout(device.get(), m_gradient_pipeline_layout, nullptr);
-            vkDestroyPipeline(device.get(), m_gradient_pipeline, nullptr);
-        });
 }
+
 Renderer::~Renderer() { m_deletion_queue.flush(); }
 
 void Renderer::render()
 {
+    ImGui::ShowDemoWindow();
+
     Device& device = Engine::get().device();
     const auto& ctx = device.get_context();
     const auto& render_target = device.get_render_target();
 
     vk_util::transition_image(ctx.dcb, m_draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
     vkCmdBindPipeline(ctx.dcb, VK_PIPELINE_BIND_POINT_COMPUTE, m_gradient_pipeline);
-
     vkCmdBindDescriptorSets(ctx.dcb,
                             VK_PIPELINE_BIND_POINT_COMPUTE,
-                            m_gradient_pipeline_layout,
+                            m_gradient->get_layout(),
                             0,
                             1,
-                            &m_draw_image_descriptors,
+                            &m_draw_image_descriptor_set,
                             0,
                             nullptr);
 
+    data.data1 = glm::vec4(1, 0, 0, 1);
+    data.data2 = glm::vec4(0, 0, 1, 1);
+
+    vkCmdPushConstants(ctx.dcb, m_gradient->get_layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &data);
     vkCmdDispatch(ctx.dcb,
                   static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.width) / 16.0f)),
                   static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.height) / 16.0f)),
@@ -122,7 +88,6 @@ void Renderer::render()
                                  render_target,
                                  {.width = m_draw_image.extent.width, .height = m_draw_image.extent.height},
                                  device.get_extent());
-    vk_util::transition_image(ctx.dcb, render_target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     m_frame_count++;
 }
