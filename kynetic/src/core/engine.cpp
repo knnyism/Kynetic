@@ -3,6 +3,7 @@
 //
 
 #include "device.hpp"
+#include "resource_manager.hpp"
 #include "renderer.hpp"
 
 #include "engine.hpp"
@@ -17,14 +18,11 @@ Engine::Engine()
     engine = this;
 
     m_device = std::make_unique<Device>();
+    m_resource_manager = std::make_unique<ResourceManager>();
     m_renderer = std::make_unique<Renderer>();
 }
 
-Engine::~Engine()
-{
-    assert(is_shutting_down);
-    engine = nullptr;
-}
+Engine::~Engine() { assert(is_shutting_down); }
 
 Engine& Engine::get() { return *engine; }
 

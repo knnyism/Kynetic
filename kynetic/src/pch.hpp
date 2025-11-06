@@ -13,6 +13,11 @@
 #include <functional>
 #include <deque>
 #include <thread>
+#include <filesystem>
+
+#include "slang.h"
+#include "slang-com-ptr.h"
+#include "slang-com-helper.h"
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
@@ -23,15 +28,40 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
-#define VK_CHECK(x)                                                        \
-    do                                                                     \
-    {                                                                      \
-        VkResult err = x;                                                  \
-        if (err)                                                           \
-        {                                                                  \
-            fmt::print("Detected Vulkan error: {}", string_VkResult(err)); \
-            abort();                                                       \
-        }                                                                  \
+#define VK_CHECK(x)                                                                                             \
+    do                                                                                                          \
+    {                                                                                                           \
+        VkResult err = x;                                                                                       \
+        if (err)                                                                                                \
+        {                                                                                                       \
+            fmt::print(stderr, "Detected Vulkan error: {} at {}:{}", string_VkResult(err), __FILE__, __LINE__); \
+            abort();                                                                                            \
+        }                                                                                                       \
+    } while (0)
+
+#define DIAGNOSE(diagnostics) \
+    if (diagnostics) printf("%s", (char*)diagnostics->getBufferPointer());
+
+#define KX_ASSERT(condition)                                                                       \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(condition))                                                                          \
+        {                                                                                          \
+            fmt::print(stderr, "Assertion failed: {} at {}:{}\n", #condition, __FILE__, __LINE__); \
+            std::abort();                                                                          \
+        }                                                                                          \
+    } while (0)
+
+#define KX_ASSERT_MSG(condition, ...)                                                              \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(condition))                                                                          \
+        {                                                                                          \
+            fmt::print(stderr, "Assertion failed: {} at {}:{}\n", #condition, __FILE__, __LINE__); \
+            fmt::print(stderr, __VA_ARGS__);                                                       \
+            fmt::print(stderr, "\n");                                                              \
+            std::abort();                                                                          \
+        }                                                                                          \
     } while (0)
 
 constexpr bool USE_VALIDATION_LAYERS = true;
@@ -56,6 +86,57 @@ struct AllocatedImage
     VkExtent3D extent;
     VkFormat format;
 };
+
+struct DescriptorLayoutBuilder
+{
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+
+    void add_binding(uint32_t binding, VkDescriptorType type);
+    void clear();
+    VkDescriptorSetLayout build(VkDevice device,
+                                VkShaderStageFlags shader_stages,
+                                void* pNext = nullptr,
+                                VkDescriptorSetLayoutCreateFlags flags = 0);
+};
+
+struct DescriptorAllocator
+{
+    struct PoolSizeRatio
+    {
+        VkDescriptorType type;
+        float ratio;
+    };
+
+    VkDescriptorPool pool;
+
+    void init_pool(VkDevice device, uint32_t max_sets, std::span<PoolSizeRatio> pool_ratios);
+    void clear_descriptors(VkDevice device) const;
+    void destroy_pool(VkDevice device) const;
+
+    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
+};
+
+namespace kynetic
+{
+struct Resource
+{
+    enum class Type
+    {
+        Shader,
+        Texture,
+        Mesh,
+    };
+
+    Type type;
+    std::string path;
+
+    size_t id{0};
+    bool is_loaded{false};
+
+    Resource(const Type type, const std::string& path) : type(type), path(path) {}
+    virtual ~Resource() = default;
+};
+}  // namespace kynetic
 
 namespace vk_init
 {
@@ -123,4 +204,5 @@ void copy_image_to_image(VkCommandBuffer command_bufferr,
                          VkExtent2D dstSize);
 
 void generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize);
+
 }  // namespace vk_util

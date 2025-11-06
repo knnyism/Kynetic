@@ -15,7 +15,7 @@ using namespace kynetic;
 Device::Device()
 {
     SDL_Init(SDL_INIT_VIDEO);
-    m_window = SDL_CreateWindow("Vulkan Engine",
+    m_window = SDL_CreateWindow("Kynetic App",
                                 static_cast<int>(m_window_extent.width),
                                 static_cast<int>(m_window_extent.height),
                                 SDL_WINDOW_VULKAN);
@@ -84,6 +84,8 @@ Device::Device()
                                              .device = m_device,
                                              .instance = m_instance};
     vmaCreateAllocator(&allocator_info, &m_allocator);
+
+    createGlobalSession(m_slang_session.writeRef());
 }
 
 Device::~Device()

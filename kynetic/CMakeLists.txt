@@ -5,17 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Vulkan REQUIRED)
-find_program(GLSLC glslc HINTS
-        ${Vulkan_GLSLC_EXECUTABLE}
-        $ENV{VULKAN_SDK}/bin
-        $ENV{VULKAN_SDK}/Bin
-        $ENV{VULKAN_SDK}/x86_64/bin
-        $ENV{VULKAN_SDK}/Bin32
-)
-
-if (NOT GLSLC)
-    message(FATAL_ERROR "glslc not found! Please install Vulkan SDK.")
-endif ()
 
 include(FetchContent)
 
@@ -114,34 +103,33 @@ FetchContent_MakeAvailable(stb)
 add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE ${stb_SOURCE_DIR})
 
-function(compile_shader target shader_file)
-    get_filename_component(shader_name ${shader_file} NAME)
-    set(output_file "src/shaders/${shader_name}.spv")
+# slang
+if (WIN32)
+    set(SLANG_PLATFORM "windows-x86_64")
+elseif (UNIX AND NOT APPLE)
+    set(SLANG_PLATFORM "linux-x86_64")
+elseif (APPLE)
+    set(SLANG_PLATFORM "macos-aarch64")
+endif ()
 
-    file(MAKE_DIRECTORY "src/shaders")
+FetchContent_Declare(
+        slang
+        URL https://github.com/shader-slang/slang/releases/download/v2025.21.1/slang-2025.21.1-${SLANG_PLATFORM}.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+)
+FetchContent_MakeAvailable(slang)
 
-    add_custom_command(
-            OUTPUT ${output_file}
-            COMMAND ${GLSLC} ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file} -o ${output_file}
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${shader_file}
-            COMMENT "Compiling shader ${shader_name}"
-    )
+add_library(slang INTERFACE)
+target_include_directories(slang INTERFACE ${slang_SOURCE_DIR}/include)
 
-    target_sources(${target} PRIVATE ${output_file})
-endfunction()
-
-file(GLOB_RECURSE SHADER_FILES
-        "src/shaders/*.vert"
-        "src/shaders/*.frag"
-        "src/shaders/*.comp"
+find_library(SLANG_LIBRARY
+        NAMES slang libslang
+        PATHS ${slang_SOURCE_DIR}/lib
+        NO_DEFAULT_PATH
+        REQUIRED
 )
 
-add_custom_target(shaders)
-
-foreach (shader ${SHADER_FILES})
-    file(RELATIVE_PATH shader_rel ${CMAKE_CURRENT_SOURCE_DIR} ${shader})
-    compile_shader(shaders ${shader_rel})
-endforeach ()
+target_link_libraries(slang INTERFACE ${SLANG_LIBRARY})
 
 file(GLOB_RECURSE KYNETIC_SOURCES "src/*.cpp")
 file(GLOB_RECURSE KYNETIC_HEADERS "src/*.hpp")
@@ -150,8 +138,6 @@ add_library(kynetic STATIC
         ${KYNETIC_SOURCES}
         ${KYNETIC_HEADERS}
 )
-
-add_dependencies(kynetic shaders)
 
 target_link_libraries(kynetic PUBLIC
         SDL3::SDL3
@@ -164,6 +150,7 @@ target_link_libraries(kynetic PUBLIC
         glm::glm
         fmt::fmt
         stb_image
+        slang
 )
 
 target_compile_features(kynetic PUBLIC cxx_std_20)

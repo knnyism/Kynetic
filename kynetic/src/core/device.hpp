@@ -51,6 +51,8 @@ class Device
 
     class Swapchain* m_swapchain{nullptr};
 
+    Slang::ComPtr<slang::IGlobalSession> m_slang_session;
+
     int m_frame_count{0};
     bool m_is_minimized{false};
     bool m_is_running{true};
@@ -71,10 +73,14 @@ public:
     Device& operator=(const Device&) = delete;
     Device& operator=(Device&&) = delete;
 
+    [[nodiscard]] const VkDevice& get() const { return m_device; }
     [[nodiscard]] VkExtent2D get_extent() const { return m_window_extent; }
 
     [[nodiscard]] Context& get_context() { return m_ctxs[m_frame_count % MAX_FRAMES_IN_FLIGHT]; }
     [[nodiscard]] const Context& get_context() const { return m_ctxs[m_frame_count % MAX_FRAMES_IN_FLIGHT]; }
+
+    [[nodiscard]] Slang::ComPtr<slang::IGlobalSession>& get_slang_session() { return m_slang_session; }
+    [[nodiscard]] const Slang::ComPtr<slang::IGlobalSession>& get_slang_session() const { return m_slang_session; }
 
     [[nodiscard]] const VkImage& get_render_target() const;
 
