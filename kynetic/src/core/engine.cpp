@@ -14,7 +14,7 @@ Engine* engine = nullptr;
 
 Engine::Engine()
 {
-    assert(engine == nullptr);
+    KX_ASSERT_MSG(engine == nullptr, "There can only be one Engine object.");
     engine = this;
 
     m_device = std::make_unique<Device>();
@@ -22,7 +22,7 @@ Engine::Engine()
     m_renderer = std::make_unique<Renderer>();
 }
 
-Engine::~Engine() { assert(is_shutting_down); }
+Engine::~Engine() { KX_ASSERT_MSG(is_shutting_down, "Engine was not shut down properly, did you forget to call ::shutdown?"); }
 
 Engine& Engine::get() { return *engine; }
 
@@ -30,7 +30,7 @@ void Engine::init() {}
 
 void Engine::shutdown()
 {
-    assert(!is_shutting_down);
+    KX_ASSERT_MSG(!is_shutting_down, "Engine was already shutting down, ::shutdown can be called only once.");
     is_shutting_down = true;
 
     m_device->wait_idle();

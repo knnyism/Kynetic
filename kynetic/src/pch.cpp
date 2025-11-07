@@ -7,38 +7,6 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 
-void DescriptorLayoutBuilder::add_binding(const uint32_t binding, const VkDescriptorType type)
-{
-    VkDescriptorSetLayoutBinding newbind{};
-    newbind.binding = binding;
-    newbind.descriptorCount = 1;
-    newbind.descriptorType = type;
-
-    bindings.push_back(newbind);
-}
-
-void DescriptorLayoutBuilder::clear() { bindings.clear(); }
-
-VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device,
-                                                     VkShaderStageFlags shader_stages,
-                                                     void* pNext,
-                                                     VkDescriptorSetLayoutCreateFlags flags)
-{
-    for (auto& b : bindings) b.stageFlags |= shader_stages;
-
-    VkDescriptorSetLayoutCreateInfo info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    info.pNext = pNext;
-
-    info.pBindings = bindings.data();
-    info.bindingCount = static_cast<uint32_t>(bindings.size());
-    info.flags = flags;
-
-    VkDescriptorSetLayout set;
-    VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
-
-    return set;
-}
-
 void DescriptorAllocator::init_pool(VkDevice device, const uint32_t max_sets, const std::span<PoolSizeRatio> pool_ratios)
 {
     std::vector<VkDescriptorPoolSize> poolSizes;

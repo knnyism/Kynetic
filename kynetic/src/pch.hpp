@@ -15,6 +15,7 @@
 #include <thread>
 #include <filesystem>
 #include <map>
+#include <ranges>
 
 #include "slang.h"
 #include "slang-com-ptr.h"
@@ -127,18 +128,6 @@ struct AllocatedImage
     VkFormat format;
 };
 
-struct DescriptorLayoutBuilder
-{
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
-
-    void add_binding(uint32_t binding, VkDescriptorType type);
-    void clear();
-    VkDescriptorSetLayout build(VkDevice device,
-                                VkShaderStageFlags shader_stages,
-                                void* pNext = nullptr,
-                                VkDescriptorSetLayoutCreateFlags flags = 0);
-};
-
 struct DescriptorAllocator
 {
     struct PoolSizeRatio
@@ -155,28 +144,6 @@ struct DescriptorAllocator
 
     VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
 };
-
-namespace kynetic
-{
-struct Resource
-{
-    enum class Type
-    {
-        Shader,
-        Texture,
-        Mesh,
-    };
-
-    Type type;
-    std::string path;
-
-    size_t id{0};
-    bool is_loaded{false};
-
-    Resource(const Type type, const std::string& path) : type(type), path(path) {}
-    virtual ~Resource() = default;
-};
-}  // namespace kynetic
 
 namespace vk_init
 {

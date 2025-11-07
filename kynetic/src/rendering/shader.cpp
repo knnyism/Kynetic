@@ -1,169 +1,160 @@
 //
-// Created by kennypc on 11/6/25.
+// Created by kennypc on 11/7/25.
 //
 
 #include "core/device.hpp"
 #include "core/engine.hpp"
-
+#include "pipeline.hpp"
 #include "shader.hpp"
 
 using namespace kynetic;
 
-Shader::Shader(const std::filesystem::path& path, const std::string& name, const std::string& entry_point_name)
-    : Resource(Type::Shader, path)
+Shader::Shader(VkDevice device, std::shared_ptr<ShaderResource> shader_resource)
+    : m_resource(std::move(shader_resource)), m_device(device)
 {
-    Device& device = Engine::get().device();
+    m_pipeline = ComputePipelineBuilder().set_shader(m_resource).build(m_device);
 
-    slang::SessionDesc session_desc = {};
-    slang::TargetDesc target_desc = {};
-    target_desc.format = SLANG_SPIRV;
-    target_desc.profile = device.get_slang_session()->findProfile("spirv_1_5");
-
-    session_desc.targets = &target_desc;
-    session_desc.targetCount = 1;
-
-    std::array<slang::CompilerOptionEntry, 1> options = {
-        {{
-            slang::CompilerOptionName::EmitSpirvDirectly,
-            {slang::CompilerOptionValueKind::Int, 1, 0, nullptr, nullptr},
-        }},
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
+        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4},
     };
-    session_desc.compilerOptionEntries = options.data();
-    session_desc.compilerOptionEntryCount = options.size();
+    m_descriptor_allocator.init_pool(m_device, 1000, sizes);
 
-    Slang::ComPtr<slang::ISession> session;
-    device.get_slang_session()->createSession(session_desc, session.writeRef());
+    for (const auto& binding_map = m_resource->get_binding_map(); const auto& [name, info] : binding_map)
+    {
+        ResourceBinding binding;
+        binding.set = info.set;
+        binding.binding = info.binding;
+        binding.type = info.type;
+        binding.is_bound = false;
 
-    Slang::ComPtr<slang::IModule> module;
-    Slang::ComPtr<slang::IBlob> diagnostics;
-    module = session->loadModule(path.c_str(), diagnostics.writeRef());
-    DIAGNOSE(diagnostics);
+        m_bindings[name] = binding;
+    }
 
-    KX_ASSERT_MSG(module, "Failed to load shader \"{}\". Path: {}", name, path.c_str());
+    uint32_t max_set = 0;
+    for (const auto& binding : m_bindings | std::views::values) max_set = std::max(max_set, binding.set);
 
-    Slang::ComPtr<slang::IEntryPoint> entry_point;
-    SlangResult result = module->findEntryPointByName(entry_point_name.c_str(), entry_point.writeRef());
-    KX_ASSERT_MSG(result == SLANG_OK, "Failed get entry point \"{}\". Path: {}", entry_point_name, path.c_str());
-
-    const std::array<slang::IComponentType*, 2> component_types = {module, entry_point};
-
-    Slang::ComPtr<slang::IComponentType> composed_program;
-    result = session->createCompositeComponentType(component_types.data(),
-                                                   component_types.size(),
-                                                   composed_program.writeRef(),
-                                                   diagnostics.writeRef());
-    DIAGNOSE(diagnostics);
-    KX_ASSERT(result == SLANG_OK);
-
-    Slang::ComPtr<slang::IComponentType> linked_program;
-    result = composed_program->link(linked_program.writeRef(), diagnostics.writeRef());
-    DIAGNOSE(diagnostics);
-    KX_ASSERT(result == SLANG_OK);
-
-    Slang::ComPtr<slang::IBlob> spirv_code;
-    result = linked_program->getTargetCode(0, spirv_code.writeRef(), diagnostics.writeRef());
-    DIAGNOSE(diagnostics);
-    KX_ASSERT(result == SLANG_OK);
-
-    VkShaderModuleCreateInfo create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    create_info.pNext = nullptr;
-
-    create_info.codeSize = spirv_code->getBufferSize();
-    create_info.pCode = static_cast<const uint32_t*>(spirv_code->getBufferPointer());
-
-    result = vkCreateShaderModule(device.get(), &create_info, nullptr, &m_shader_module);
-    KX_ASSERT(result == VK_SUCCESS);
-
-    reflect(linked_program);
+    m_descriptor_sets.resize(max_set + 1, VK_NULL_HANDLE);
+    for (uint32_t i = 0; i <= max_set; ++i)
+    {
+        if (VkDescriptorSetLayout layout = m_resource->get_layout_at(i); layout != VK_NULL_HANDLE)
+        {
+            m_descriptor_sets[i] = m_descriptor_allocator.allocate(m_device, layout);
+        }
+    }
 }
 
 Shader::~Shader()
 {
-    Device& device = Engine::get().device();
-
-    if (m_pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device.get(), m_pipeline_layout, nullptr);
-
-    for (VkDescriptorSetLayout layout : m_descriptor_set_layouts)
-        if (layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device.get(), layout, nullptr);
-
-    if (m_shader_module != VK_NULL_HANDLE) vkDestroyShaderModule(device.get(), m_shader_module, nullptr);
+    if (m_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(m_device, m_pipeline, nullptr);
+    m_descriptor_allocator.destroy_pool(m_device);
 }
 
-void Shader::reflect(slang::IComponentType* linked_program)
+Shader::Shader(Shader&& other) noexcept
+    : m_resource(std::move(other.m_resource)),
+      m_pipeline(other.m_pipeline),
+      m_device(other.m_device),
+      m_descriptor_allocator(std::move(other.m_descriptor_allocator)),
+      m_descriptor_sets(std::move(other.m_descriptor_sets)),
+      m_bindings(std::move(other.m_bindings)),
+      m_pending_writes(std::move(other.m_pending_writes))
 {
-    Device& device = Engine::get().device();
-    slang::ProgramLayout* program_layout = linked_program->getLayout();
+    other.m_pipeline = VK_NULL_HANDLE;
+    other.m_device = VK_NULL_HANDLE;
+}
 
-    VkShaderStageFlags stage_flags = 0;
-    SlangUInt entry_point_count = program_layout->getEntryPointCount();
-
-    for (SlangUInt i = 0; i < entry_point_count; ++i)
+Shader& Shader::operator=(Shader&& other) noexcept
+{
+    if (this != &other)
     {
-        slang::EntryPointLayout* entry_point = program_layout->getEntryPointByIndex(i);
-        stage_flags |= vk_util::slang_to_vk_stage(entry_point->getStage());
-    }
-
-    std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> bindings_by_set;
-    std::vector<VkPushConstantRange> push_constant_ranges;
-
-    SlangUInt param_count = program_layout->getParameterCount();
-    for (SlangUInt i = 0; i < param_count; ++i)
-    {
-        slang::VariableLayoutReflection* param = program_layout->getParameterByIndex(static_cast<unsigned>(i));
-        slang::TypeLayoutReflection* type_layout = param->getTypeLayout();
-        if (type_layout->getKind() == slang::TypeReflection::Kind::ConstantBuffer &&
-            param->getCategory() == slang::ParameterCategory::PushConstantBuffer)
+        if (m_pipeline != VK_NULL_HANDLE)
         {
-            slang::TypeLayoutReflection* element_type = type_layout->getElementTypeLayout();
-
-            VkPushConstantRange range{};
-            range.offset = static_cast<uint32_t>(param->getOffset(slang::ParameterCategory::PushConstantBuffer));
-            range.size = static_cast<uint32_t>(element_type->getSize());
-            range.stageFlags = stage_flags;
-
-            push_constant_ranges.push_back(range);
-            continue;
+            vkDestroyPipeline(m_device, m_pipeline, nullptr);
         }
+        m_descriptor_allocator.destroy_pool(m_device);
 
-        SlangInt space = param->getBindingSpace();
-        SlangInt binding = param->getBindingIndex();
+        m_resource = std::move(other.m_resource);
+        m_pipeline = other.m_pipeline;
+        m_device = other.m_device;
+        m_descriptor_allocator = std::move(other.m_descriptor_allocator);
+        m_descriptor_sets = std::move(other.m_descriptor_sets);
+        m_bindings = std::move(other.m_bindings);
+        m_pending_writes = std::move(other.m_pending_writes);
 
-        if (space >= 0 && binding >= 0)
-        {
-            VkDescriptorSetLayoutBinding vk_binding{};
-            vk_binding.binding = static_cast<uint32_t>(binding);
-            vk_binding.descriptorType = vk_util::slang_to_vk_descriptor_type(type_layout->getBindingRangeType(0));
-            vk_binding.descriptorCount = 1;
-            vk_binding.stageFlags = stage_flags;
-            vk_binding.pImmutableSamplers = nullptr;
-
-            if (type_layout->getKind() == slang::TypeReflection::Kind::Array)
-            {
-                vk_binding.descriptorCount = static_cast<uint32_t>(type_layout->getElementCount());
-            }
-
-            bindings_by_set[static_cast<uint32_t>(space)].push_back(vk_binding);
-        }
+        other.m_pipeline = VK_NULL_HANDLE;
+        other.m_device = VK_NULL_HANDLE;
     }
+    return *this;
+}
 
-    m_descriptor_set_layouts.resize(bindings_by_set.empty() ? 0 : bindings_by_set.rbegin()->first + 1, VK_NULL_HANDLE);
-
-    for (auto& [set_index, bindings] : bindings_by_set)
+void Shader::update_descriptors()
+{
+    for (auto& writes : m_pending_writes | std::views::values)
     {
-        VkDescriptorSetLayoutCreateInfo layout_info{};
-        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-        layout_info.pBindings = bindings.data();
-        VK_CHECK(vkCreateDescriptorSetLayout(device.get(), &layout_info, nullptr, &m_descriptor_set_layouts[set_index]));
+        if (writes.empty()) continue;
+
+        std::vector<VkWriteDescriptorSet> vk_writes;
+        vk_writes.reserve(writes.size());
+        for (auto& pending : writes) vk_writes.push_back(pending.write);
+
+        vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(vk_writes.size()), vk_writes.data(), 0, nullptr);
     }
 
-    VkPipelineLayoutCreateInfo pipeline_layout_info{};
-    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = static_cast<uint32_t>(m_descriptor_set_layouts.size());
-    pipeline_layout_info.pSetLayouts = m_descriptor_set_layouts.data();
-    pipeline_layout_info.pushConstantRangeCount = static_cast<uint32_t>(push_constant_ranges.size());
-    pipeline_layout_info.pPushConstantRanges = push_constant_ranges.empty() ? nullptr : push_constant_ranges.data();
+    m_pending_writes.clear();
+}
 
-    VK_CHECK(vkCreatePipelineLayout(device.get(), &pipeline_layout_info, nullptr, &m_pipeline_layout));
+void Shader::set_image(const char* name, VkImageView view, const VkImageLayout layout)
+{
+    const auto it = m_bindings.find(name);
+    if (it == m_bindings.end())
+    {
+        fmt::println(stderr, "Binding '{}' not found in shader", name);
+        return;
+    }
+
+    auto& [set, binding, type, is_bound] = it->second;
+
+    PendingWrite& pending = m_pending_writes[set].emplace_back();
+    pending.image_info.imageView = view;
+    pending.image_info.imageLayout = layout;
+    pending.image_info.sampler = VK_NULL_HANDLE;
+
+    pending.write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    pending.write.dstSet = m_descriptor_sets[set];
+    pending.write.dstBinding = binding;
+    pending.write.descriptorCount = 1;
+    pending.write.descriptorType = type;
+    pending.write.pImageInfo = &pending.image_info;
+
+    is_bound = true;
+}
+
+// void Shader::set_buffer(const char* name, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range) {}
+
+void Shader::set_push_constants(VkCommandBuffer command_buffer,
+                                const uint32_t size,
+                                const void* data,
+                                const uint32_t offset) const
+{
+    vkCmdPushConstants(command_buffer, m_resource->get_layout(), VK_SHADER_STAGE_COMPUTE_BIT, offset, size, data);
+}
+
+void Shader::dispatch(VkCommandBuffer command_buffer, uint32_t x, uint32_t y, uint32_t z)
+{
+    update_descriptors();
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_pipeline);
+    if (!m_descriptor_sets.empty())
+        vkCmdBindDescriptorSets(command_buffer,
+                                VK_PIPELINE_BIND_POINT_COMPUTE,
+                                m_resource->get_layout(),
+                                0,
+                                static_cast<uint32_t>(m_descriptor_sets.size()),
+                                m_descriptor_sets.data(),
+                                0,
+                                nullptr);
+
+    vkCmdDispatch(command_buffer, x, y, z);
 }

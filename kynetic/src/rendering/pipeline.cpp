@@ -2,14 +2,12 @@
 // Created by kennypc on 11/6/25.
 //
 
-#include "shader.hpp"
+#include "resource/shader.hpp"
 #include "pipeline.hpp"
-
-#include <utility>
 
 using namespace kynetic;
 
-ComputePipelineBuilder& ComputePipelineBuilder::set_shader(std::shared_ptr<Shader> shader)
+ComputePipelineBuilder& ComputePipelineBuilder::set_shader(std::shared_ptr<ShaderResource> shader)
 {
     m_shader = std::move(shader);
     return *this;
@@ -33,9 +31,9 @@ VkPipeline ComputePipelineBuilder::build(VkDevice device) const
 
     VkComputePipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipeline_info.flags = m_flags;
-    pipeline_info.stage = stage_info;
     pipeline_info.layout = m_shader->get_layout();
+    pipeline_info.stage = stage_info;
+    pipeline_info.flags = m_flags;
 
     VkPipeline pipeline;
     VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline));

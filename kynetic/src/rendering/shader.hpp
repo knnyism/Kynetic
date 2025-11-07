@@ -1,28 +1,56 @@
 //
-// Created by kennypc on 11/6/25.
+// Created by kennypc on 11/7/25.
 //
 
 #pragma once
 
+#include "resource/shader.hpp"
+
 namespace kynetic
 {
-class Shader : public Resource
+class Shader
 {
-    VkShaderModule m_shader_module;
-    std::filesystem::file_time_type m_last_modified;
+    struct ResourceBinding
+    {
+        uint32_t set;
+        uint32_t binding;
+        VkDescriptorType type;
+        bool is_bound = false;
+    };
 
-    VkPipelineLayout m_pipeline_layout;
-    std::vector<VkDescriptorSetLayout> m_descriptor_set_layouts;
+    struct PendingWrite
+    {
+        VkWriteDescriptorSet write;
+        VkDescriptorImageInfo image_info;
+        VkDescriptorBufferInfo buffer_info;
+    };
 
-    void reflect(slang::IComponentType* linked_program);
+    std::shared_ptr<ShaderResource> m_resource;
+    VkPipeline m_pipeline = VK_NULL_HANDLE;
+    VkDevice m_device = VK_NULL_HANDLE;
+
+    DescriptorAllocator m_descriptor_allocator;
+    std::vector<VkDescriptorSet> m_descriptor_sets;
+
+    std::unordered_map<std::string, ResourceBinding> m_bindings;
+    std::map<uint32_t, std::vector<PendingWrite>> m_pending_writes;
+
+    void update_descriptors();
 
 public:
-    Shader(const std::filesystem::path& path, const std::string& name, const std::string& entry_point_name = "main");
-    ~Shader() override;
+    Shader(VkDevice device, std::shared_ptr<ShaderResource> shader_resource);
+    ~Shader();
 
-    [[nodiscard]] const VkShaderModule& get_module() const { return m_shader_module; }
-    [[nodiscard]] const VkPipelineLayout& get_layout() const { return m_pipeline_layout; }
+    Shader(const Shader&) = delete;
+    Shader& operator=(const Shader&) = delete;
+    Shader(Shader&& other) noexcept;
+    Shader& operator=(Shader&& other) noexcept;
 
-    [[nodiscard]] const VkDescriptorSetLayout& get_set_layout(size_t index) const { return m_descriptor_set_layouts[index]; }
+    void set_image(const char* name, VkImageView view, VkImageLayout layout = VK_IMAGE_LAYOUT_GENERAL);
+    void set_buffer(const char* name, VkBuffer buffer, VkDeviceSize offset = 0, VkDeviceSize range = VK_WHOLE_SIZE);
+
+    void set_push_constants(VkCommandBuffer command_buffer, uint32_t size, const void* data, uint32_t offset = 0) const;
+
+    void dispatch(VkCommandBuffer command_buffer, uint32_t x, uint32_t y, uint32_t z);
 };
 }  // namespace kynetic

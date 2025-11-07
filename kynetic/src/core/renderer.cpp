@@ -3,7 +3,6 @@
 //
 
 #include "rendering/shader.hpp"
-#include "rendering/pipeline.hpp"
 
 #include "device.hpp"
 #include "engine.hpp"
@@ -28,58 +27,56 @@ Renderer::Renderer()
 
     m_deletion_queue.push_function([this, &device]() { device.destroy_image(m_draw_image); });
 
-    m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang", "gradient");
+    backgroundEffects.push_back({"gradient",
+                                 std::make_unique<Shader>(device.get(),
+                                                          Engine::get().resources().load<ShaderResource>(
+                                                              "assets/shared_assets/shaders/gradient.slang"))});
+    backgroundEffects[0].data.data1 = glm::vec4(1, 0, 0, 1);
+    backgroundEffects[0].data.data2 = glm::vec4(0, 0, 1, 1);
 
-    m_gradient_pipeline = ComputePipelineBuilder().set_shader(m_gradient).build(device.get());
-    m_deletion_queue.push_function([this, &device]() { vkDestroyPipeline(device.get(), m_gradient_pipeline, nullptr); });
+    backgroundEffects.push_back({"sky",
+                                 std::make_unique<Shader>(device.get(),
+                                                          Engine::get().resources().load<ShaderResource>(
+                                                              "assets/shared_assets/shaders/gradient.slang"))});
+    backgroundEffects[1].data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
 
-    m_draw_image_descriptor_set = device.get_descriptor_allocator().allocate(device.get(), m_gradient->get_set_layout(0));
-    VkDescriptorImageInfo imgInfo{};
-    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imgInfo.imageView = m_draw_image.view;
-
-    VkWriteDescriptorSet drawImageWrite = {};
-    drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    drawImageWrite.pNext = nullptr;
-
-    drawImageWrite.dstBinding = 0;
-    drawImageWrite.dstSet = m_draw_image_descriptor_set;
-    drawImageWrite.descriptorCount = 1;
-    drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    drawImageWrite.pImageInfo = &imgInfo;
-
-    vkUpdateDescriptorSets(device.get(), 1, &drawImageWrite, 0, nullptr);
+    backgroundEffects[0].shader->set_image("image", m_draw_image.view);
+    backgroundEffects[1].shader->set_image("image", m_draw_image.view);
 }
 
 Renderer::~Renderer() { m_deletion_queue.flush(); }
 
 void Renderer::render()
 {
-    ImGui::ShowDemoWindow();
+    if (ImGui::Begin("background"))
+    {
+        Effect& selected = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
+        ImGui::Text("Selected effect: %s", selected.name);
+
+        ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, static_cast<int>(backgroundEffects.size()) - 1);
+
+        ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
+        ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
+        ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
+        ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+    }
+    ImGui::End();
+
+    ImGui::Render();
 
     Device& device = Engine::get().device();
     const auto& ctx = device.get_context();
     const auto& render_target = device.get_render_target();
 
     vk_util::transition_image(ctx.dcb, m_draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-    vkCmdBindPipeline(ctx.dcb, VK_PIPELINE_BIND_POINT_COMPUTE, m_gradient_pipeline);
-    vkCmdBindDescriptorSets(ctx.dcb,
-                            VK_PIPELINE_BIND_POINT_COMPUTE,
-                            m_gradient->get_layout(),
-                            0,
-                            1,
-                            &m_draw_image_descriptor_set,
-                            0,
-                            nullptr);
 
-    data.data1 = glm::vec4(1, 0, 0, 1);
-    data.data2 = glm::vec4(0, 0, 1, 1);
+    const Effect& effect = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
 
-    vkCmdPushConstants(ctx.dcb, m_gradient->get_layout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &data);
-    vkCmdDispatch(ctx.dcb,
-                  static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.width) / 16.0f)),
-                  static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.height) / 16.0f)),
-                  1);
+    effect.shader->set_push_constants(ctx.dcb, sizeof(ComputePushConstants), &effect.data);
+    effect.shader->dispatch(ctx.dcb,
+                            static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.width) / 16.0f)),
+                            static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.height) / 16.0f)),
+                            1);
 
     vk_util::transition_image(ctx.dcb, m_draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vk_util::transition_image(ctx.dcb, render_target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);

@@ -92,9 +92,6 @@ Device::Device()
                                              .instance = m_instance};
     vmaCreateAllocator(&allocator_info, &m_allocator);
 
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}};
-    m_descriptor_allocator.init_pool(m_device, 1000, sizes);
-
     VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &imgui_command_pool));
     VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(imgui_command_pool, 1);
     VK_CHECK(vkAllocateCommandBuffers(m_device, &cmdAllocInfo, &imgui_command_buffer));
@@ -151,8 +148,6 @@ Device::~Device()
     vkDestroyDescriptorPool(m_device, imgui_descriptor_pool, nullptr);
 
     vkDestroyCommandPool(m_device, imgui_command_pool, nullptr);
-
-    m_descriptor_allocator.destroy_pool(m_device);
 
     vmaDestroyAllocator(m_allocator);
 

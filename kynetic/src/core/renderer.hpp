@@ -7,8 +7,6 @@
 namespace kynetic
 {
 
-class Shader;
-
 struct ComputePushConstants
 {
     glm::vec4 data1;
@@ -25,12 +23,17 @@ class Renderer
 
     DeletionQueue m_deletion_queue;
 
-    std::shared_ptr<Shader> m_gradient;
-    VkDescriptorSet m_draw_image_descriptor_set;
-    VkPipeline m_gradient_pipeline;
-
     int m_frame_count{0};
-    ComputePushConstants data;
+
+    struct Effect
+    {
+        const char* name;
+        std::unique_ptr<class Shader> shader;
+        ComputePushConstants data{};
+    };
+
+    std::vector<Effect> backgroundEffects;
+    int currentBackgroundEffect{0};
 
 public:
     Renderer();

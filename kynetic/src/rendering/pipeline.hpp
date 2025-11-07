@@ -8,11 +8,11 @@ namespace kynetic
 {
 class ComputePipelineBuilder
 {
-    std::shared_ptr<Shader> m_shader;
+    std::shared_ptr<class ShaderResource> m_shader;
     VkPipelineCreateFlags m_flags = 0;
 
 public:
-    ComputePipelineBuilder& set_shader(std::shared_ptr<Shader> shader);
+    ComputePipelineBuilder& set_shader(std::shared_ptr<ShaderResource> shader);
 
     ComputePipelineBuilder& set_flags(VkPipelineCreateFlags flags);
 
