@@ -4,14 +4,15 @@
 
 #pragma once
 
+#include "rendering/command_buffer.hpp"
+
 struct SDL_Window;
 
 namespace kynetic
 {
 struct Context
 {
-    VkCommandPool command_pool;
-    VkCommandBuffer dcb;
+    CommandBuffer dcb;
 
     VkSemaphore swapchain_semaphore, render_semaphore;
     VkFence render_fence;
@@ -51,6 +52,8 @@ class Device
 
     class Swapchain* m_swapchain{nullptr};
 
+    DescriptorAllocator m_descriptor_allocator;
+
     VkCommandPool imgui_command_pool;
     VkCommandBuffer imgui_command_buffer;
     VkDescriptorPool imgui_descriptor_pool;
@@ -86,6 +89,8 @@ public:
     [[nodiscard]] Slang::ComPtr<slang::IGlobalSession>& get_slang_session() { return m_slang_session; }
     [[nodiscard]] const Slang::ComPtr<slang::IGlobalSession>& get_slang_session() const { return m_slang_session; }
 
+    [[nodiscard]] const DescriptorAllocator& get_descriptor_allocator() const { return m_descriptor_allocator; }
+
     [[nodiscard]] const VkImage& get_render_target() const;
 
     bool is_minimized() const;
@@ -106,6 +111,9 @@ public:
                                 VkImageAspectFlags aspect_flags) const;
 
     void destroy_image(const AllocatedImage& image) const;
+
+    AllocatedBuffer create_buffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage) const;
+    void destroy_buffer(const AllocatedBuffer& buffer) const;
 
     void wait_idle() const;
 };

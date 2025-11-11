@@ -197,71 +197,32 @@ VkRenderingAttachmentInfo vk_init::attachment_info(VkImageView view,
     return color_attachment;
 }
 
-void vk_util::transition_image(VkCommandBuffer command_buffer,
-                               VkImage image,
-                               VkImageLayout current_layout,
-                               VkImageLayout new_layout)
+VkPipelineLayoutCreateInfo vk_init::pipeline_layout_create_info()
 {
-    const VkImageAspectFlags aspect_mask =
-        (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    VkPipelineLayoutCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    info.pNext = nullptr;
 
-    VkImageMemoryBarrier2 image_barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                                        .pNext = nullptr,
-
-                                        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                        .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
-                                        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                        .dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-
-                                        .oldLayout = current_layout,
-                                        .newLayout = new_layout,
-                                        .image = image,
-                                        .subresourceRange = vk_init::image_subresource_range(aspect_mask)};
-
-    const VkDependencyInfo dependency_info{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                                           .pNext = nullptr,
-                                           .imageMemoryBarrierCount = 1,
-                                           .pImageMemoryBarriers = &image_barrier};
-
-    vkCmdPipelineBarrier2(command_buffer, &dependency_info);
+    info.flags = 0;
+    info.setLayoutCount = 0;
+    info.pSetLayouts = nullptr;
+    info.pushConstantRangeCount = 0;
+    info.pPushConstantRanges = nullptr;
+    return info;
 }
 
-void vk_util::copy_image_to_image(VkCommandBuffer command_bufferr,
-                                  VkImage source,
-                                  VkImage destination,
-                                  const VkExtent2D srcSize,
-                                  const VkExtent2D dstSize)
+VkPipelineShaderStageCreateInfo vk_init::pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
+                                                                           VkShaderModule shader_module,
+                                                                           const char* entry)
 {
-    VkImageBlit2 blit_region{.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr};
+    VkPipelineShaderStageCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    info.pNext = nullptr;
 
-    blit_region.srcOffsets[1].x = static_cast<int32_t>(srcSize.width);
-    blit_region.srcOffsets[1].y = static_cast<int32_t>(srcSize.height);
-    blit_region.srcOffsets[1].z = 1;
-
-    blit_region.dstOffsets[1].x = static_cast<int32_t>(dstSize.width);
-    blit_region.dstOffsets[1].y = static_cast<int32_t>(dstSize.height);
-    blit_region.dstOffsets[1].z = 1;
-
-    blit_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    blit_region.srcSubresource.baseArrayLayer = 0;
-    blit_region.srcSubresource.layerCount = 1;
-    blit_region.srcSubresource.mipLevel = 0;
-
-    blit_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    blit_region.dstSubresource.baseArrayLayer = 0;
-    blit_region.dstSubresource.layerCount = 1;
-    blit_region.dstSubresource.mipLevel = 0;
-
-    VkBlitImageInfo2 blitInfo{.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr};
-    blitInfo.dstImage = destination;
-    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    blitInfo.srcImage = source;
-    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    blitInfo.filter = VK_FILTER_LINEAR;
-    blitInfo.regionCount = 1;
-    blitInfo.pRegions = &blit_region;
-
-    vkCmdBlitImage2(command_bufferr, &blitInfo);
+    info.stage = stage;
+    info.module = shader_module;
+    info.pName = entry;
+    return info;
 }
 
 VkDescriptorType vk_util::slang_to_vk_descriptor_type(const slang::BindingType type)

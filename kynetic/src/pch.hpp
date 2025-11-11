@@ -15,7 +15,6 @@
 #include <thread>
 #include <filesystem>
 #include <map>
-#include <ranges>
 
 #include "slang.h"
 #include "slang-com-ptr.h"
@@ -128,6 +127,13 @@ struct AllocatedImage
     VkFormat format;
 };
 
+struct AllocatedBuffer
+{
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
 struct DescriptorAllocator
 {
     struct PoolSizeRatio
@@ -201,14 +207,6 @@ VkPipelineShaderStageCreateInfo pipeline_shader_stage_create_info(VkShaderStageF
 
 namespace vk_util
 {
-
-void transition_image(VkCommandBuffer command_buffer, VkImage image, VkImageLayout current_layout, VkImageLayout new_layout);
-
-void copy_image_to_image(VkCommandBuffer command_bufferr,
-                         VkImage source,
-                         VkImage destination,
-                         VkExtent2D srcSize,
-                         VkExtent2D dstSize);
 
 void generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize);
 

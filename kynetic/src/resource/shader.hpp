@@ -9,7 +9,7 @@
 namespace kynetic
 {
 
-class ShaderResource : public Resource
+class Shader : public Resource
 {
 public:
     struct BindingInfo
@@ -33,13 +33,12 @@ private:
     void reflect(slang::IComponentType* linked_program);
 
 public:
-    ShaderResource(const std::filesystem::path& path, const std::string& entry_point_name = "main");
-    ~ShaderResource() override;
+    Shader(const std::filesystem::path& path, const std::string& entry_point_name = "main");
+    ~Shader() override;
 
     [[nodiscard]] const VkShaderModule& get_module() const { return m_shader_module; }
     [[nodiscard]] const VkPipelineLayout& get_layout() const { return m_pipeline_layout; }
-
-    [[nodiscard]] const VkDescriptorSetLayout& get_layout_at(const size_t index) const
+    [[nodiscard]] const VkDescriptorSetLayout& get_layout_at(const uint32_t index) const
     {
         return m_descriptor_set_layouts[index];
     }

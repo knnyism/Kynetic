@@ -9,8 +9,7 @@
 
 using namespace kynetic;
 
-ShaderResource::ShaderResource(const std::filesystem::path& path, const std::string& entry_point_name)
-    : Resource(Type::Shader, path)
+Shader::Shader(const std::filesystem::path& path, const std::string& entry_point_name) : Resource(Type::Shader, path)
 {
     Device& device = Engine::get().device();
 
@@ -78,7 +77,7 @@ ShaderResource::ShaderResource(const std::filesystem::path& path, const std::str
     reflect(linked_program);
 }
 
-ShaderResource::~ShaderResource()
+Shader::~Shader()
 {
     Device& device = Engine::get().device();
 
@@ -90,7 +89,7 @@ ShaderResource::~ShaderResource()
     if (m_shader_module != VK_NULL_HANDLE) vkDestroyShaderModule(device.get(), m_shader_module, nullptr);
 }
 
-void ShaderResource::reflect(slang::IComponentType* linked_program)
+void Shader::reflect(slang::IComponentType* linked_program)
 {
     Device& device = Engine::get().device();
     slang::ProgramLayout* program_layout = linked_program->getLayout();

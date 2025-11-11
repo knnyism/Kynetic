@@ -8,6 +8,7 @@
 #include "vk_mem_alloc.h"
 
 #include "core/device.hpp"
+
 #include "rendering/swapchain.hpp"
 
 KX_DISABLE_WARNING_PUSH
@@ -47,8 +48,12 @@ Device::Device()
     features_12.bufferDeviceAddress = true;
     features_12.descriptorIndexing = true;
 
+    VkPhysicalDeviceVulkan11Features features_11{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+    features_11.shaderDrawParameters = true;
+
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
+                                              .set_required_features_11(features_11)
                                               .set_required_features_13(features_13)
                                               .set_required_features_12(features_12)
                                               .set_surface(m_surface)
@@ -66,19 +71,12 @@ Device::Device()
     m_queue_indices = {.graphics = device.get_queue_index(vkb::QueueType::graphics).value(),
                        .present = device.get_queue_index(vkb::QueueType::present).value()};
 
-    VkCommandPoolCreateInfo command_pool_info =
-        vk_init::command_pool_create_info(m_queue_indices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
     VkFenceCreateInfo fence_create_info = vk_init::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
     VkSemaphoreCreateInfo semaphore_create_info = vk_init::semaphore_create_info();
 
     for (auto& ctx : m_ctxs)
     {
-        VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &ctx.command_pool));
-
-        VkCommandBufferAllocateInfo command_buffer_allocate_info = vk_init::command_buffer_allocate_info(ctx.command_pool, 1);
-
-        VK_CHECK(vkAllocateCommandBuffers(m_device, &command_buffer_allocate_info, &ctx.dcb));
+        ctx.dcb.init(m_device, m_queue_indices.graphics);
 
         VK_CHECK(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &ctx.swapchain_semaphore));
         VK_CHECK(vkCreateSemaphore(m_device, &semaphore_create_info, nullptr, &ctx.render_semaphore));
@@ -91,6 +89,17 @@ Device::Device()
                                              .device = m_device,
                                              .instance = m_instance};
     vmaCreateAllocator(&allocator_info, &m_allocator);
+
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
+        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4},
+    };
+    m_descriptor_allocator.init_pool(m_device, 1000, sizes);
+
+    VkCommandPoolCreateInfo command_pool_info =
+        vk_init::command_pool_create_info(m_queue_indices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &imgui_command_pool));
     VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(imgui_command_pool, 1);
@@ -146,14 +155,15 @@ Device::~Device()
 {
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(m_device, imgui_descriptor_pool, nullptr);
-
     vkDestroyCommandPool(m_device, imgui_command_pool, nullptr);
+
+    m_descriptor_allocator.destroy_pool(m_device);
 
     vmaDestroyAllocator(m_allocator);
 
     for (auto& ctx : m_ctxs)
     {
-        vkDestroyCommandPool(m_device, ctx.command_pool, nullptr);
+        ctx.dcb.shutdown();
 
         vkDestroyFence(m_device, ctx.render_fence, nullptr);
         vkDestroySemaphore(m_device, ctx.render_semaphore, nullptr);
@@ -193,12 +203,13 @@ void Device::begin_frame()
     m_swapchain->swap(ctx.swapchain_semaphore);
 
     VK_CHECK(vkResetFences(m_device, 1, &ctx.render_fence));
-    VK_CHECK(vkResetCommandBuffer(ctx.dcb, 0));
+
+    ctx.dcb.reset();
 
     const VkCommandBufferBeginInfo dcb_begin_info =
         vk_init::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-    VK_CHECK(vkBeginCommandBuffer(ctx.dcb, &dcb_begin_info));
+    VK_CHECK(vkBeginCommandBuffer(ctx.dcb.m_command_buffer, &dcb_begin_info));
 }
 
 void Device::end_frame()
@@ -211,15 +222,15 @@ void Device::end_frame()
         vk_init::attachment_info(m_swapchain->get_image_view(), nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingInfo renderInfo = vk_init::rendering_info(m_swapchain->m_extent, &colorAttachment, nullptr);
 
-    vkCmdBeginRendering(ctx.dcb, &renderInfo);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.dcb);
-    vkCmdEndRendering(ctx.dcb);
+    vkCmdBeginRendering(ctx.dcb.m_command_buffer, &renderInfo);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.dcb.m_command_buffer);
+    vkCmdEndRendering(ctx.dcb.m_command_buffer);
 
-    vk_util::transition_image(ctx.dcb, m_swapchain->get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    ctx.dcb.transition_image(m_swapchain->get_image(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-    VK_CHECK(vkEndCommandBuffer(ctx.dcb));
+    VK_CHECK(vkEndCommandBuffer(ctx.dcb.m_command_buffer));
 
-    VkCommandBufferSubmitInfo command_buffer_info = vk_init::command_buffer_submit_info(ctx.dcb);
+    VkCommandBufferSubmitInfo command_buffer_info = vk_init::command_buffer_submit_info(ctx.dcb.m_command_buffer);
 
     VkSemaphoreSubmitInfo wait_info =
         vk_init::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, ctx.swapchain_semaphore);
@@ -319,6 +330,29 @@ void Device::destroy_image(const AllocatedImage& image) const
 {
     vkDestroyImageView(m_device, image.view, nullptr);
     vmaDestroyImage(m_allocator, image.image, image.allocation);
+}
+
+AllocatedBuffer Device::create_buffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage) const
+{
+    VkBufferCreateInfo bufferInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.pNext = nullptr;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memory_usage;
+    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    AllocatedBuffer newBuffer;
+
+    VK_CHECK(
+        vmaCreateBuffer(m_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info));
+
+    return newBuffer;
+}
+
+void Device::destroy_buffer(const AllocatedBuffer& buffer) const
+{
+    vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
 }
 
 void Device::wait_idle() const { vkDeviceWaitIdle(m_device); }

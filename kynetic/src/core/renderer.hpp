@@ -25,10 +25,18 @@ class Renderer
 
     int m_frame_count{0};
 
+    std::shared_ptr<class Shader> m_gradient;
+    VkDescriptorSet m_gradient_descriptor_set{VK_NULL_HANDLE};
+
+    std::shared_ptr<Shader> m_triangle_frag;
+    std::shared_ptr<Shader> m_triangle_vert;
+    std::unique_ptr<class Pipeline> m_triangle_pipeline;
+
     struct Effect
     {
         const char* name;
-        std::unique_ptr<class Shader> shader;
+
+        std::unique_ptr<Pipeline> pipeline;
         ComputePushConstants data{};
     };
 
