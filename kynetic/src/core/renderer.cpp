@@ -150,8 +150,8 @@ void Renderer::render()
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
     DrawPushConstants push_constants;
-    push_constants.worldMatrix = glm::mat4{1.f};
-    push_constants.vertexBuffer = m_quad->get_address();
+    push_constants.world_matrix = glm::mat4{1.f};
+    push_constants.vertex_buffer = m_quad->get_address();
 
     ctx.dcb.bind_pipeline(m_mesh_pipeline.get());
     ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(DrawPushConstants), &push_constants);

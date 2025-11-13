@@ -23,6 +23,6 @@ struct Vertex
 
 struct DrawPushConstants
 {
-    float4x4 worldMatrix;
-    VkDeviceAddress vertexBuffer;
+    float4x4 world_matrix;
+    VkDeviceAddress vertex_buffer;
 };

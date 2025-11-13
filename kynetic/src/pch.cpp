@@ -29,14 +29,14 @@ void DescriptorAllocator::destroy_pool(VkDevice device) const { vkDestroyDescrip
 
 VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLayout layout) const
 {
-    VkDescriptorSetAllocateInfo allocInfo = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    allocInfo.pNext = nullptr;
-    allocInfo.descriptorPool = pool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &layout;
+    VkDescriptorSetAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    alloc_info.pNext = nullptr;
+    alloc_info.descriptorPool = pool;
+    alloc_info.descriptorSetCount = 1;
+    alloc_info.pSetLayouts = &layout;
 
     VkDescriptorSet descriptor_set;
-    VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptor_set));
+    VK_CHECK(vkAllocateDescriptorSets(device, &alloc_info, &descriptor_set));
 
     return descriptor_set;
 }

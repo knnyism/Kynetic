@@ -20,11 +20,11 @@ VertexStageOutput main(uint vertex_id : SV_VertexID)
     VertexStageOutput output;
 
     // Cast the address to a buffer reference
-    Vertex* vertices = (Vertex*)constants.vertexBuffer;
+    Vertex* vertices = (Vertex*)constants.vertex_buffer;
     Vertex v = vertices[vertex_id];
 
     output.coarseVertex.color = v.color.xyz;
-    output.sv_position = mul(constants.worldMatrix, float4(v.position, 1.0));
+    output.sv_position = mul(constants.world_matrix, float4(v.position, 1.0));
 
     return output;
 }
