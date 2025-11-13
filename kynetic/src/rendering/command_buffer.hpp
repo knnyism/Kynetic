@@ -33,11 +33,17 @@ public:
 
     void bind_pipeline(Pipeline* pipeline);
     void bind_descriptors(VkDescriptorSet descriptor_set) const;
+    void bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset = 0) const;
     void set_push_constants(VkShaderStageFlagBits stage_flags, uint32_t size, const void* data, uint32_t offset = 0) const;
 
     void dispatch(uint32_t x, uint32_t y, uint32_t z) const;
 
     void draw_auto(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance) const;
+    void draw(uint32_t index_count,
+              uint32_t instance_count,
+              uint32_t first_index,
+              int32_t vertex_offset,
+              uint32_t first_instance) const;
 };
 
 }  // namespace kynetic

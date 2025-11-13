@@ -54,8 +54,10 @@ class Device
 
     DescriptorAllocator m_descriptor_allocator;
 
-    VkCommandPool imgui_command_pool;
-    VkCommandBuffer imgui_command_buffer;
+    VkFence m_immediate_fence;
+    VkCommandPool m_immediate_command_pool;
+    VkCommandBuffer m_immediate_command_buffer;
+
     VkDescriptorPool imgui_descriptor_pool;
 
     Slang::ComPtr<slang::IGlobalSession> m_slang_session;
@@ -116,5 +118,6 @@ public:
     void destroy_buffer(const AllocatedBuffer& buffer) const;
 
     void wait_idle() const;
+    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 };
 }  // namespace kynetic

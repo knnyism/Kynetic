@@ -1,8 +1,4 @@
-struct AssembledVertex
-{
-    float3	position : POSITION;
-    float3	color    : COLOR;
-};
+#include "shader_types.hpp"
 
 struct CoarseVertex
 {
@@ -15,31 +11,20 @@ struct VertexStageOutput
     float4          sv_position     : SV_Position;
 };
 
+[[vk::push_constant]]
+DrawPushConstants constants;
+
 [shader("vertex")]
-VertexStageOutput main(
-    AssembledVertex assembledVertex, uint vertexId : SV_VertexID)
+VertexStageOutput main(uint vertex_id : SV_VertexID)
 {
     VertexStageOutput output;
-    const float3 positions[3] = float3[3](
-		float3(1.f,1.f, 0.0f),
-		float3(-1.f,1.f, 0.0f),
-		float3(0.f,-1.f, 0.0f)
-	);
 
-	const float3 colors[3] = float3[3](
-		float3(1.0f, 0.0f, 0.0f), //red
-		float3(0.0f, 1.0f, 0.0f), //green
-		float3(0.f, 0.0f, 1.0f)  //blue
-	);
+    // Cast the address to a buffer reference
+    Vertex* vertices = (Vertex*)constants.vertexBuffer;
+    Vertex v = vertices[vertex_id];
 
-    // float3 position = assembledVertex.position;
-    // float3 color = assembledVertex.color;
+    output.coarseVertex.color = v.color.xyz;
+    output.sv_position = mul(constants.worldMatrix, float4(v.position, 1.0));
 
-    // output.coarseVertex.color = color;
-    // output.sv_position = mul(modelViewProjection, float4(position, 1.0));
-
-    output.coarseVertex.color = colors[vertexId];
-    output.sv_position = float4(positions[vertexId], 1.0f);
-    
     return output;
 }

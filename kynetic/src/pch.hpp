@@ -20,9 +20,9 @@
 #include "slang-com-ptr.h"
 #include "slang-com-helper.h"
 
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_enum_string_helper.h>
-#include <vk_mem_alloc.h>
+#include "vulkan/vulkan.h"
+#include "vulkan/vk_enum_string_helper.h"
+#include "vk_mem_alloc.h"
 
 #include <fmt/core.h>
 
@@ -150,6 +150,28 @@ struct DescriptorAllocator
 
     VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
 };
+
+namespace kynetic
+{
+struct Resource
+{
+    enum class Type
+    {
+        Shader,
+        Texture,
+        Mesh,
+    };
+
+    Type type;
+    std::string path;
+
+    size_t id{0};
+    bool is_loaded{false};
+
+    Resource(const Type type, std::string path) : type(type), path(std::move(path)) {}
+    virtual ~Resource() = default;
+};
+}  // namespace kynetic
 
 namespace vk_init
 {

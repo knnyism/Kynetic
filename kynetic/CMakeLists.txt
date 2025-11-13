@@ -157,6 +157,7 @@ target_compile_features(kynetic PUBLIC cxx_std_20)
 
 target_include_directories(kynetic PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders
 )
 
 target_precompile_headers(kynetic PUBLIC

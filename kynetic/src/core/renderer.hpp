@@ -30,7 +30,10 @@ class Renderer
 
     std::shared_ptr<Shader> m_triangle_frag;
     std::shared_ptr<Shader> m_triangle_vert;
-    std::unique_ptr<class Pipeline> m_triangle_pipeline;
+
+    std::unique_ptr<Pipeline> m_mesh_pipeline;
+
+    std::shared_ptr<class Mesh> m_quad;
 
     struct Effect
     {

@@ -4,9 +4,6 @@
 
 #include <fstream>
 
-#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
-
 void DescriptorAllocator::init_pool(VkDevice device, const uint32_t max_sets, const std::span<PoolSizeRatio> pool_ratios)
 {
     std::vector<VkDescriptorPoolSize> poolSizes;

@@ -5,7 +5,7 @@
 #include "core/device.hpp"
 #include "core/engine.hpp"
 
-#include "resource/shader.hpp"
+#include "shader.hpp"
 
 using namespace kynetic;
 
@@ -112,6 +112,7 @@ void Shader::reflect(slang::IComponentType* linked_program)
         slang::VariableLayoutReflection* param = program_layout->getParameterByIndex(static_cast<unsigned>(i));
         slang::TypeLayoutReflection* type_layout = param->getTypeLayout();
 
+        // Handle pure push constants
         if (type_layout->getKind() == slang::TypeReflection::Kind::ConstantBuffer &&
             param->getCategory() == slang::ParameterCategory::PushConstantBuffer)
         {

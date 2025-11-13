@@ -11,7 +11,10 @@
 #include "imgui.h"
 #include "rendering/command_buffer.hpp"
 #include "rendering/pipeline.hpp"
-#include "resource/shader.hpp"
+#include "rendering/shader.hpp"
+#include "rendering/mesh.hpp"
+
+#include "shader_types.hpp"
 
 using namespace kynetic;
 
@@ -33,17 +36,17 @@ Renderer::Renderer()
     m_triangle_frag = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.frag.slang");
     m_triangle_vert = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.vert.slang");
 
-    m_triangle_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                         .set_shader(m_triangle_vert, m_triangle_frag)
-                                                         .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                         .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                         .set_color_attachment_format(m_draw_image.format)
-                                                         .set_depth_format(VK_FORMAT_UNDEFINED)
-                                                         .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
-                                                         .set_multisampling_none()
-                                                         .disable_blending()
-                                                         .disable_depthtest()
-                                                         .build(device.get()));
+    m_mesh_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                                     .set_shader(m_triangle_vert, m_triangle_frag)
+                                                     .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                                     .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                                     .set_color_attachment_format(m_draw_image.format)
+                                                     .set_depth_format(VK_FORMAT_UNDEFINED)
+                                                     .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+                                                     .set_multisampling_none()
+                                                     .disable_blending()
+                                                     .disable_depthtest()
+                                                     .build(device.get()));
 
     Effect& gradient = backgroundEffects.emplace_back(
         "gradient",
@@ -72,6 +75,30 @@ Renderer::Renderer()
     write.pImageInfo = &image_info;
 
     vkUpdateDescriptorSets(device.get(), 1, &write, 0, nullptr);
+
+    std::array<Vertex, 4> rect_vertices;
+
+    rect_vertices[0].position = {0.5, -0.5, 0};
+    rect_vertices[1].position = {0.5, 0.5, 0};
+    rect_vertices[2].position = {-0.5, -0.5, 0};
+    rect_vertices[3].position = {-0.5, 0.5, 0};
+
+    rect_vertices[0].color = {0, 0, 0, 1};
+    rect_vertices[1].color = {0.5, 0.5, 0.5, 1};
+    rect_vertices[2].color = {1, 0, 0, 1};
+    rect_vertices[3].color = {0, 1, 0, 1};
+
+    std::array<uint32_t, 6> rect_indices;
+
+    rect_indices[0] = 0;
+    rect_indices[1] = 1;
+    rect_indices[2] = 2;
+
+    rect_indices[3] = 2;
+    rect_indices[4] = 1;
+    rect_indices[5] = 3;
+
+    m_quad = Engine::get().resources().load<Mesh>("", rect_indices, rect_vertices);
 }
 
 Renderer::~Renderer() { m_deletion_queue.flush(); }
@@ -122,8 +149,14 @@ void Renderer::render()
     ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-    ctx.dcb.bind_pipeline(m_triangle_pipeline.get());
-    ctx.dcb.draw_auto(3, 1, 0, 0);
+    DrawPushConstants push_constants;
+    push_constants.worldMatrix = glm::mat4{1.f};
+    push_constants.vertexBuffer = m_quad->get_address();
+
+    ctx.dcb.bind_pipeline(m_mesh_pipeline.get());
+    ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(DrawPushConstants), &push_constants);
+    ctx.dcb.bind_index_buffer(m_quad->get_indices(), m_quad->get_index_type());
+    ctx.dcb.draw(6, 1, 0, 0, 0);
 
     ctx.dcb.end_rendering();
 

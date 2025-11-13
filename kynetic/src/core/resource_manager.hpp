@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include "resource/base.hpp"
-
 namespace kynetic
 {
 

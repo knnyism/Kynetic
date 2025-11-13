@@ -51,11 +51,15 @@ Device::Device()
     VkPhysicalDeviceVulkan11Features features_11{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     features_11.shaderDrawParameters = true;
 
+    VkPhysicalDeviceFeatures features{};
+    features.shaderInt64 = true;
+
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
                                               .set_required_features_11(features_11)
                                               .set_required_features_13(features_13)
                                               .set_required_features_12(features_12)
+                                              .set_required_features(features)
                                               .set_surface(m_surface)
                                               .select()
                                               .value();
@@ -84,6 +88,13 @@ Device::Device()
         VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &ctx.render_fence));
     }
 
+    VkCommandPoolCreateInfo command_pool_info =
+        vk_init::command_pool_create_info(m_queue_indices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &m_immediate_command_pool));
+    VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(m_immediate_command_pool, 1);
+    VK_CHECK(vkAllocateCommandBuffers(m_device, &cmdAllocInfo, &m_immediate_command_buffer));
+    VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &m_immediate_fence));
+
     VmaAllocatorCreateInfo allocator_info = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
                                              .physicalDevice = m_physical_device,
                                              .device = m_device,
@@ -97,13 +108,6 @@ Device::Device()
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4},
     };
     m_descriptor_allocator.init_pool(m_device, 1000, sizes);
-
-    VkCommandPoolCreateInfo command_pool_info =
-        vk_init::command_pool_create_info(m_queue_indices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
-    VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &imgui_command_pool));
-    VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(imgui_command_pool, 1);
-    VK_CHECK(vkAllocateCommandBuffers(m_device, &cmdAllocInfo, &imgui_command_buffer));
 
     VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
@@ -155,12 +159,13 @@ Device::~Device()
 {
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(m_device, imgui_descriptor_pool, nullptr);
-    vkDestroyCommandPool(m_device, imgui_command_pool, nullptr);
 
     m_descriptor_allocator.destroy_pool(m_device);
 
     vmaDestroyAllocator(m_allocator);
 
+    vkDestroyFence(m_device, m_immediate_fence, nullptr);
+    vkDestroyCommandPool(m_device, m_immediate_command_pool, nullptr);
     for (auto& ctx : m_ctxs)
     {
         ctx.dcb.shutdown();
@@ -356,3 +361,23 @@ void Device::destroy_buffer(const AllocatedBuffer& buffer) const
 }
 
 void Device::wait_idle() const { vkDeviceWaitIdle(m_device); }
+
+void Device::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const
+{
+    VK_CHECK(vkResetFences(m_device, 1, &m_immediate_fence));
+    VK_CHECK(vkResetCommandBuffer(m_immediate_command_buffer, 0));
+
+    VkCommandBufferBeginInfo begin_info = vk_init::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    VK_CHECK(vkBeginCommandBuffer(m_immediate_command_buffer, &begin_info));
+
+    function(m_immediate_command_buffer);
+
+    VK_CHECK(vkEndCommandBuffer(m_immediate_command_buffer));
+
+    VkCommandBufferSubmitInfo submit_info = vk_init::command_buffer_submit_info(m_immediate_command_buffer);
+    VkSubmitInfo2 submit = vk_init::submit_info(&submit_info, nullptr, nullptr);
+
+    VK_CHECK(vkQueueSubmit2(m_graphics_queue, 1, &submit, m_immediate_fence));
+    VK_CHECK(vkWaitForFences(m_device, 1, &m_immediate_fence, true, 9999999999));
+}

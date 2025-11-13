@@ -2,7 +2,7 @@
 // Created by kennypc on 11/6/25.
 //
 
-#include "resource/shader.hpp"
+#include "shader.hpp"
 #include "pipeline.hpp"
 
 using namespace kynetic;
