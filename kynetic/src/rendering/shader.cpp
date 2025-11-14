@@ -28,7 +28,7 @@ Shader::Shader(const std::filesystem::path& path, const std::string& entry_point
         }},
     };
     session_desc.compilerOptionEntries = options.data();
-    session_desc.compilerOptionEntryCount = options.size();
+    session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
 
     Slang::ComPtr<slang::ISession> session;
     device.get_slang_session()->createSession(session_desc, session.writeRef());

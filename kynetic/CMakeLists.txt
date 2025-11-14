@@ -109,12 +109,27 @@ target_include_directories(stb_image INTERFACE ${stb_SOURCE_DIR})
 
 # slang
 if (WIN32)
-    set(SLANG_PLATFORM "windows-x86_64")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(SLANG_PLATFORM "windows-x86_64")
+    else()
+        set(SLANG_PLATFORM "windows-x86")
+    endif()
 elseif (UNIX AND NOT APPLE)
-    set(SLANG_PLATFORM "linux-x86_64")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(SLANG_PLATFORM "linux-x86_64")
+    else()
+        set(SLANG_PLATFORM "linux-x86")
+    endif()
 elseif (APPLE)
-    set(SLANG_PLATFORM "macos-aarch64")
+    # Check for Apple Silicon vs Intel
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        set(SLANG_PLATFORM "macos-aarch64")
+    else()
+        set(SLANG_PLATFORM "macos-x86_64")
+    endif()
 endif ()
+
+message(STATUS "Detected Slang platform: ${SLANG_PLATFORM}")
 
 FetchContent_Declare(
         slang
@@ -126,14 +141,34 @@ FetchContent_MakeAvailable(slang)
 add_library(slang INTERFACE)
 target_include_directories(slang INTERFACE ${slang_SOURCE_DIR}/include)
 
+if(WIN32)
+    set(SLANG_LIB_NAMES slang.lib slang.dll.lib)
+    set(SLANG_LIB_DIR ${slang_SOURCE_DIR}/lib ${slang_SOURCE_DIR}/bin)
+else()
+    set(SLANG_LIB_NAMES slang libslang libslang.so libslang.dylib)
+    set(SLANG_LIB_DIR ${slang_SOURCE_DIR}/lib ${slang_SOURCE_DIR}/lib64)
+endif()
+
 find_library(SLANG_LIBRARY
-        NAMES slang libslang
-        PATHS ${slang_SOURCE_DIR}/lib
+        NAMES ${SLANG_LIB_NAMES}
+        PATHS ${SLANG_LIB_DIR}
         NO_DEFAULT_PATH
         REQUIRED
 )
 
+message(STATUS "Found Slang library: ${SLANG_LIBRARY}")
+
 target_link_libraries(slang INTERFACE ${SLANG_LIBRARY})
+
+if(WIN32)
+    file(GLOB SLANG_DLLS "${slang_SOURCE_DIR}/bin/*.dll")
+    if(SLANG_DLLS)
+        foreach(DLL ${SLANG_DLLS})
+            message(STATUS "Copying Slang DLL: ${DLL}")
+            configure_file(${DLL} ${CMAKE_BINARY_DIR} COPYONLY)
+        endforeach()
+    endif()
+endif()
 
 file(GLOB_RECURSE KYNETIC_SOURCES "src/*.cpp")
 file(GLOB_RECURSE KYNETIC_HEADERS "src/*.hpp")
@@ -170,6 +205,9 @@ target_precompile_headers(kynetic PUBLIC
 
 if (WIN32)
     target_compile_definitions(kynetic PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+    # Add Windows-specific runtime library settings
+    set_property(TARGET kynetic PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 elseif (UNIX AND NOT APPLE)
     target_link_libraries(kynetic PUBLIC ${CMAKE_DL_LIBS})
     target_compile_definitions(kynetic PUBLIC VK_USE_PLATFORM_XLIB_KHR)
