@@ -13,10 +13,6 @@ namespace kynetic
 struct Context
 {
     CommandBuffer dcb;
-
-    VkSemaphore swapchain_semaphore, render_semaphore;
-    VkFence render_fence;
-
     DeletionQueue deletion_queue;
 };
 
@@ -31,6 +27,13 @@ constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 3;
 class Device
 {
     friend class Engine;
+
+    struct Sync
+    {
+        VkSemaphore image_available;
+        VkSemaphore render_finished;
+        VkFence in_flight_fence;
+    };
 
     SDL_Window* m_window{nullptr};
     VkExtent2D m_window_extent{1024, 768};
@@ -49,8 +52,9 @@ class Device
     VmaAllocator m_allocator;
 
     Context m_ctxs[MAX_FRAMES_IN_FLIGHT];
+    std::vector<Sync> m_syncs;
 
-    class Swapchain* m_swapchain{nullptr};
+    std::unique_ptr<class Swapchain> m_swapchain;
 
     DescriptorAllocator m_descriptor_allocator;
 
@@ -62,12 +66,11 @@ class Device
 
     Slang::ComPtr<slang::IGlobalSession> m_slang_session;
 
-    int m_frame_count{0};
+    uint32_t m_frame_count{0};
     bool m_is_minimized{false};
     bool m_is_running{true};
     bool m_resize_requested{false};
 
-    void wait_until_safe_for_rendering() const;
     void resize_swapchain();
 
     bool begin_frame();
@@ -95,7 +98,7 @@ public:
 
     [[nodiscard]] const DescriptorAllocator& get_descriptor_allocator() const { return m_descriptor_allocator; }
 
-    [[nodiscard]] const VkImage& get_render_target() const;
+    [[nodiscard]] const VkImage& get_video_out() const;
 
     bool is_minimized() const;
     bool is_running() const;

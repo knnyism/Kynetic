@@ -2,8 +2,6 @@
 // Created by kennypc on 11/14/25.
 //
 
-#include "shader_types.hpp"
-
 #include "mesh.hpp"
 #include "model.hpp"
 
@@ -12,7 +10,7 @@
 
 using namespace kynetic;
 
-Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path)
+Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.string())
 {
     auto file = fastgltf::GltfDataBuffer::FromPath(path);
     constexpr auto options = fastgltf::Options::LoadExternalBuffers | fastgltf::Options::DecomposeNodeMatrices;

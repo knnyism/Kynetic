@@ -9,7 +9,7 @@
 
 using namespace kynetic;
 
-Shader::Shader(const std::filesystem::path& path, const std::string& entry_point_name) : Resource(Type::Shader, path)
+Shader::Shader(const std::filesystem::path& path, const std::string& entry_point_name) : Resource(Type::Shader, path.string())
 {
     Device& device = Engine::get().device();
 
@@ -35,14 +35,14 @@ Shader::Shader(const std::filesystem::path& path, const std::string& entry_point
 
     Slang::ComPtr<slang::IModule> module;
     Slang::ComPtr<slang::IBlob> diagnostics;
-    module = session->loadModule(path.c_str(), diagnostics.writeRef());
+    module = session->loadModule(path.string().c_str(), diagnostics.writeRef());
     DIAGNOSE(diagnostics);
 
-    KX_ASSERT_MSG(module, "Failed to load shader. Path: {}", path.c_str());
+    KX_ASSERT_MSG(module, "Failed to load shader. Path: {}", path.string());
 
     Slang::ComPtr<slang::IEntryPoint> entry_point;
     SlangResult result = module->findEntryPointByName(entry_point_name.c_str(), entry_point.writeRef());
-    KX_ASSERT_MSG(result == SLANG_OK, "Failed get entry point \"{}\". Path: {}", entry_point_name, path.c_str());
+    KX_ASSERT_MSG(result == SLANG_OK, "Failed get entry point \"{}\". Path: {}", entry_point_name, path.string());
 
     const std::array<slang::IComponentType*, 2> component_types = {module, entry_point};
 

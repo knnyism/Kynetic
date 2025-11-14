@@ -6,23 +6,12 @@
 
 namespace kynetic
 {
-
-struct ComputePushConstants
-{
-    glm::vec4 data1;
-    glm::vec4 data2;
-    glm::vec4 data3;
-    glm::vec4 data4;
-
-    glm::ivec2 size;
-};
-
 class Renderer
 {
     friend class Engine;
 
-    AllocatedImage m_draw_image;
-    AllocatedImage m_depth_image;
+    AllocatedImage m_render_target;
+    AllocatedImage m_depth_render_target;
 
     DeletionQueue m_deletion_queue;
 
@@ -46,11 +35,15 @@ class Renderer
         const char* name;
 
         std::unique_ptr<Pipeline> pipeline;
-        ComputePushConstants data{};
+        GradientPushConstants data{};
     };
 
     std::vector<Effect> backgroundEffects;
     int currentBackgroundEffect{0};
+
+    void init_render_target();
+    void destroy_render_target() const;
+    void update_gradient_descriptor() const;
 
 public:
     Renderer();

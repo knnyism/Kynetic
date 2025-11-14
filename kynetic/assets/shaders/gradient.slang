@@ -1,19 +1,10 @@
-
-struct PushConstants
-{
-    float4 data1;
-    float4 data2;
-    float4 data3;
-    float4 data4;
-
-    int2 size;
-}
+#include "shader_types.hpp"
 
 [[vk::binding(0, 0)]]
 RWTexture2D<float4> image;
 
 [[vk::push_constant]]
-PushConstants pushConstants;
+GradientPushConstants pushConstants;
 
 [shader("compute")]
 [numthreads(16, 16, 1)]

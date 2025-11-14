@@ -16,6 +16,18 @@
 #include <filesystem>
 #include <map>
 
+#include "fmt/core.h"
+
+#include "glm/mat4x4.hpp"
+#include "glm/vec4.hpp"
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_transform.hpp"
+
+#include "fastgltf/core.hpp"
+#include "fastgltf/types.hpp"
+#include "fastgltf/tools.hpp"
+#include "fastgltf/glm_element_traits.hpp"
+
 #include "slang.h"
 #include "slang-com-ptr.h"
 #include "slang-com-helper.h"
@@ -24,19 +36,7 @@
 #include "vulkan/vk_enum_string_helper.h"
 #include "vk_mem_alloc.h"
 
-#include <fmt/core.h>
-
-#include "glm/mat4x4.hpp"
-#include "glm/vec4.hpp"
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include "glm/gtx/transform.hpp"
-
-#undef None
-#include "fastgltf/core.hpp"
-#include "fastgltf/types.hpp"
-#include "fastgltf/tools.hpp"
-#include "fastgltf/glm_element_traits.hpp"
+#include "shader_types.hpp"
 
 #define VK_CHECK(x)                                                                                             \
     do                                                                                                          \

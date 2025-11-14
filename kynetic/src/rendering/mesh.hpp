@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include "shader_types.hpp"
-
 namespace kynetic
 {
 

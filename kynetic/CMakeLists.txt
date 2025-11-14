@@ -14,6 +14,10 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
         GIT_TAG main
 )
+
+set(SDL_SHARED OFF)
+set(SDL_STATIC ON)
+
 FetchContent_MakeAvailable(sdl3)
 
 # vk-bootstrap

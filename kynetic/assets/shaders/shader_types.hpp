@@ -10,6 +10,8 @@
 using float3 = glm::vec3;
 using float4 = glm::vec4;
 using float4x4 = glm::mat4;
+
+using int2 = glm::ivec2;
 #endif
 
 struct Vertex
@@ -25,4 +27,14 @@ struct DrawPushConstants
 {
     float4x4 world_matrix;
     VkDeviceAddress vertex_buffer;
+};
+
+struct GradientPushConstants
+{
+    float4 data1;
+    float4 data2;
+    float4 data3;
+    float4 data4;
+
+    int2 size;
 };

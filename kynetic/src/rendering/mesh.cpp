@@ -16,7 +16,7 @@ Mesh::Mesh(const std::filesystem::path& path,
            std::span<uint32_t> indices,
            std::span<Vertex> vertices,
            std::vector<Primitive> primitives)
-    : Resource(Type::Mesh, path)
+    : Resource(Type::Mesh, path.string())
 {
     Device& device = Engine::get().device();
 
