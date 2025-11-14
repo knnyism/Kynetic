@@ -65,10 +65,12 @@ class Device
     int m_frame_count{0};
     bool m_is_minimized{false};
     bool m_is_running{true};
+    bool m_resize_requested{false};
 
     void wait_until_safe_for_rendering() const;
+    void resize_swapchain();
 
-    void begin_frame();
+    bool begin_frame();
     void end_frame();
 
     void update();

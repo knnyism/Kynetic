@@ -5,6 +5,8 @@ struct PushConstants
     float4 data2;
     float4 data3;
     float4 data4;
+
+    int2 size;
 }
 
 [[vk::binding(0, 0)]]
@@ -19,15 +21,13 @@ void main(uint3 globalID : SV_DispatchThreadID,
           uint3 localID : SV_GroupThreadID)
 {
     int2 texelCoord = int2(globalID.xy);
-    int2 size;
-    image.GetDimensions(size.x, size.y);
 
     float4 topColor = pushConstants.data1;
     float4 bottomColor = pushConstants.data2;
 
-    if (texelCoord.x < size.x && texelCoord.y < size.y)
+    if (texelCoord.x < pushConstants.size.x && texelCoord.y < pushConstants.size.y)
     {
-        float blend = float(texelCoord.y)/(size.y);
+        float blend = float(texelCoord.y)/(pushConstants.size.y);
 
         image[texelCoord] = lerp(topColor, bottomColor, blend);
     }

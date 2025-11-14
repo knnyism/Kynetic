@@ -13,6 +13,8 @@ struct ComputePushConstants
     glm::vec4 data2;
     glm::vec4 data3;
     glm::vec4 data4;
+
+    glm::ivec2 size;
 };
 
 class Renderer
@@ -20,6 +22,7 @@ class Renderer
     friend class Engine;
 
     AllocatedImage m_draw_image;
+    AllocatedImage m_depth_image;
 
     DeletionQueue m_deletion_queue;
 
@@ -33,7 +36,10 @@ class Renderer
 
     std::unique_ptr<Pipeline> m_mesh_pipeline;
 
-    std::shared_ptr<class Mesh> m_quad;
+    std::shared_ptr<class Model> m_quad;
+
+    float m_render_scale{1.f};
+    VkExtent2D m_last_device_extent;
 
     struct Effect
     {

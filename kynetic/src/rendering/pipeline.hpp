@@ -87,6 +87,7 @@ public:
     GraphicsPipelineBuilder& set_color_attachment_format(VkFormat format);
     GraphicsPipelineBuilder& set_depth_format(VkFormat format);
     GraphicsPipelineBuilder& disable_depthtest();
+    GraphicsPipelineBuilder& enable_depthtest(bool depth_write_enable, VkCompareOp op);
 
     // GraphicsPipelineBuilder& set_flags(VkPipelineCreateFlags flags);
 

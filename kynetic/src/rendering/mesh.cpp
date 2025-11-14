@@ -12,13 +12,18 @@
 
 using namespace kynetic;
 
-Mesh::Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::span<Vertex> vertices)
+Mesh::Mesh(const std::filesystem::path& path,
+           std::span<uint32_t> indices,
+           std::span<Vertex> vertices,
+           std::vector<Primitive> primitives)
     : Resource(Type::Mesh, path)
 {
     Device& device = Engine::get().device();
 
     const size_t vertex_buffer_size = vertices.size() * sizeof(Vertex);
     const size_t index_buffer_size = indices.size() * sizeof(uint32_t);
+
+    m_primitives = std::move(primitives);
 
     m_vertex_buffer = device.create_buffer(
         vertex_buffer_size,

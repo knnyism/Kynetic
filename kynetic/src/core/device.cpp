@@ -26,7 +26,7 @@ Device::Device()
     m_window = SDL_CreateWindow("Kynetic App",
                                 static_cast<int>(m_window_extent.width),
                                 static_cast<int>(m_window_extent.height),
-                                SDL_WINDOW_VULKAN);
+                                SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
     auto instance = vkb::InstanceBuilder()
                         .set_app_name("Kynetic App")
@@ -194,7 +194,7 @@ void Device::wait_until_safe_for_rendering() const
     VK_CHECK(vkWaitForFences(m_device, 1, &ctx.render_fence, true, 1000000000));
 }
 
-void Device::begin_frame()
+bool Device::begin_frame()
 {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -205,7 +205,13 @@ void Device::begin_frame()
     auto& ctx = get_context();
 
     ctx.deletion_queue.flush();
-    m_swapchain->swap(ctx.swapchain_semaphore);
+    VkResult result = m_swapchain->swap(ctx.swapchain_semaphore);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        m_resize_requested = true;
+        return false;
+    }
 
     VK_CHECK(vkResetFences(m_device, 1, &ctx.render_fence));
 
@@ -215,6 +221,8 @@ void Device::begin_frame()
         vk_init::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VK_CHECK(vkBeginCommandBuffer(ctx.dcb.m_command_buffer, &dcb_begin_info));
+
+    return true;
 }
 
 void Device::end_frame()
@@ -254,9 +262,27 @@ void Device::end_frame()
         .pSwapchains = &m_swapchain->m_swapchain,
         .pImageIndices = &m_swapchain->m_image_index,
     };
-    VK_CHECK(vkQueuePresentKHR(m_graphics_queue, &present_info));
+
+    VkResult result = vkQueuePresentKHR(m_graphics_queue, &present_info);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) m_resize_requested = true;
 
     m_frame_count++;
+}
+
+void Device::resize_swapchain()
+{
+    vkDeviceWaitIdle(m_device);
+
+    delete m_swapchain;
+
+    int w, h;
+    SDL_GetWindowSize(m_window, &w, &h);
+    m_window_extent.width = static_cast<uint32_t>(w);
+    m_window_extent.height = static_cast<uint32_t>(h);
+
+    m_swapchain = new Swapchain(m_device, m_physical_device, m_surface, m_window_extent.width, m_window_extent.height);
+
+    m_resize_requested = false;
 }
 
 void Device::update()
@@ -276,12 +302,17 @@ void Device::update()
             case SDL_EVENT_WINDOW_RESTORED:
                 m_is_minimized = false;
                 break;
+            case SDL_EVENT_WINDOW_RESIZED:
+                m_resize_requested = true;
+                break;
             default:
                 break;
         }
 
         ImGui_ImplSDL3_ProcessEvent(&event);
     }
+
+    if (m_resize_requested) resize_swapchain();
 }
 
 bool Device::is_minimized() const { return m_is_minimized; }

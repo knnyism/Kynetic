@@ -9,10 +9,12 @@
 #include "renderer.hpp"
 
 #include "imgui.h"
+
 #include "rendering/command_buffer.hpp"
 #include "rendering/pipeline.hpp"
 #include "rendering/shader.hpp"
 #include "rendering/mesh.hpp"
+#include "rendering/model.hpp"
 
 #include "shader_types.hpp"
 
@@ -21,6 +23,9 @@ using namespace kynetic;
 Renderer::Renderer()
 {
     Device& device = Engine::get().device();
+    VkExtent2D device_extent = device.get_extent();
+
+    m_last_device_extent = device_extent;
     m_draw_image = device.create_image(device.get_extent(),
                                        VK_FORMAT_R16G16B16A16_SFLOAT,
                                        VMA_MEMORY_USAGE_GPU_ONLY,
@@ -28,8 +33,15 @@ Renderer::Renderer()
                                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                        VK_IMAGE_ASPECT_COLOR_BIT);
-
     m_deletion_queue.push_function([this, &device]() { device.destroy_image(m_draw_image); });
+
+    m_depth_image = device.create_image(device.get_extent(),
+                                        VK_FORMAT_D32_SFLOAT,
+                                        VMA_MEMORY_USAGE_GPU_ONLY,
+                                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                        VK_IMAGE_ASPECT_DEPTH_BIT);
+    m_deletion_queue.push_function([this, &device]() { device.destroy_image(m_depth_image); });
 
     m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang");
 
@@ -41,11 +53,11 @@ Renderer::Renderer()
                                                      .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                                                      .set_polygon_mode(VK_POLYGON_MODE_FILL)
                                                      .set_color_attachment_format(m_draw_image.format)
-                                                     .set_depth_format(VK_FORMAT_UNDEFINED)
+                                                     .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                                                     .set_depth_format(m_depth_image.format)
                                                      .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
                                                      .set_multisampling_none()
                                                      .disable_blending()
-                                                     .disable_depthtest()
                                                      .build(device.get()));
 
     Effect& gradient = backgroundEffects.emplace_back(
@@ -75,37 +87,15 @@ Renderer::Renderer()
     write.pImageInfo = &image_info;
 
     vkUpdateDescriptorSets(device.get(), 1, &write, 0, nullptr);
-
-    std::array<Vertex, 4> rect_vertices;
-
-    rect_vertices[0].position = {0.5, -0.5, 0};
-    rect_vertices[1].position = {0.5, 0.5, 0};
-    rect_vertices[2].position = {-0.5, -0.5, 0};
-    rect_vertices[3].position = {-0.5, 0.5, 0};
-
-    rect_vertices[0].color = {0, 0, 0, 1};
-    rect_vertices[1].color = {0.5, 0.5, 0.5, 1};
-    rect_vertices[2].color = {1, 0, 0, 1};
-    rect_vertices[3].color = {0, 1, 0, 1};
-
-    std::array<uint32_t, 6> rect_indices;
-
-    rect_indices[0] = 0;
-    rect_indices[1] = 1;
-    rect_indices[2] = 2;
-
-    rect_indices[3] = 2;
-    rect_indices[4] = 1;
-    rect_indices[5] = 3;
-
-    m_quad = Engine::get().resources().load<Mesh>("", rect_indices, rect_vertices);
+    m_quad = Engine::get().resources().load<Model>("assets/shared_assets/models/basicmesh.glb");
 }
 
 Renderer::~Renderer() { m_deletion_queue.flush(); }
 
 void Renderer::render()
 {
-    static VkExtent2D draw_extent = {.width = m_draw_image.extent.width, .height = m_draw_image.extent.height};
+    Device& device = Engine::get().device();
+    VkExtent2D device_extent = device.get_extent();
 
     if (ImGui::Begin("background"))
     {
@@ -118,45 +108,100 @@ void Renderer::render()
         ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
         ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
         ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+
+        ImGui::SliderFloat("Render Scale", &m_render_scale, 0.3f, 1.f);
     }
     ImGui::End();
 
+    if (device_extent.width != m_last_device_extent.width || device_extent.height != m_last_device_extent.height)
+    {
+        m_last_device_extent = device_extent;
+
+        device.destroy_image(m_draw_image);
+        m_draw_image = device.create_image(device.get_extent(),
+                                           VK_FORMAT_R16G16B16A16_SFLOAT,
+                                           VMA_MEMORY_USAGE_GPU_ONLY,
+                                           VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                               VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                           VK_IMAGE_ASPECT_COLOR_BIT);
+
+        device.destroy_image(m_depth_image);
+        m_depth_image = device.create_image(device.get_extent(),
+                                            VK_FORMAT_D32_SFLOAT,
+                                            VMA_MEMORY_USAGE_GPU_ONLY,
+                                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                            VK_IMAGE_ASPECT_DEPTH_BIT);
+
+        VkDescriptorImageInfo image_info;
+        image_info.sampler = VK_NULL_HANDLE;
+        image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        image_info.imageView = m_draw_image.view;
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        write.dstSet = m_gradient_descriptor_set;
+        write.dstBinding = 0;
+        write.pImageInfo = &image_info;
+
+        vkUpdateDescriptorSets(device.get(), 1, &write, 0, nullptr);
+    }
+
+    VkExtent2D draw_extent = {.width = static_cast<uint32_t>(static_cast<float>(m_draw_image.extent.width) * m_render_scale),
+                              .height = static_cast<uint32_t>(static_cast<float>(m_draw_image.extent.height) * m_render_scale)};
+
     ImGui::Render();
 
-    Device& device = Engine::get().device();
     auto& ctx = device.get_context();
     const auto& render_target = device.get_render_target();
 
     ctx.dcb.transition_image(m_draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-    const Effect& effect = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
+    Effect& effect = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
+    effect.data.size = glm::ivec2(draw_extent.width, draw_extent.height);
 
     ctx.dcb.bind_pipeline(effect.pipeline.get());
     ctx.dcb.bind_descriptors(m_gradient_descriptor_set);
     ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(ComputePushConstants), &effect.data);
-    ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.width) / 16.0f)),
-                     static_cast<uint32_t>(std::ceilf(static_cast<float>(m_draw_image.extent.height) / 16.0f)),
+    ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.width) / 16.0f)),
+                     static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.height) / 16.0f)),
                      1);
 
     ctx.dcb.transition_image(m_draw_image.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    ctx.dcb.transition_image(m_depth_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkRenderingAttachmentInfo color_attachment =
         vk_init::attachment_info(m_draw_image.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depth_attachment =
+        vk_init::depth_attachment_info(m_depth_image.view, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, nullptr);
+    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
     ctx.dcb.begin_rendering(render_info);
 
     ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(sinf(static_cast<float>(m_frame_count) / 100), -0.5f, cosf(static_cast<float>(m_frame_count) / 100)) * 5.f,
+        glm::vec3(0, 0, 0),
+        glm::vec3(0, 1, 0));
+    glm::mat4 projection = glm::perspective(glm::radians(85.f),
+                                            static_cast<float>(draw_extent.width) / static_cast<float>(draw_extent.height),
+                                            0.1f,
+                                            100.f);
+    projection[1][1] *= -1.f;
+
     DrawPushConstants push_constants;
-    push_constants.world_matrix = glm::mat4{1.f};
-    push_constants.vertex_buffer = m_quad->get_address();
+    push_constants.world_matrix = glm::transpose(projection * view);
+    push_constants.vertex_buffer = m_quad->get_meshes()[2]->get_address();
 
     ctx.dcb.bind_pipeline(m_mesh_pipeline.get());
     ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(DrawPushConstants), &push_constants);
-    ctx.dcb.bind_index_buffer(m_quad->get_indices(), m_quad->get_index_type());
-    ctx.dcb.draw(6, 1, 0, 0, 0);
+    ctx.dcb.bind_index_buffer(m_quad->get_meshes()[2]->get_indices(), m_quad->get_meshes()[2]->get_index_type());
+    for (auto& primitive : m_quad->get_meshes()[2]->get_primitives()) ctx.dcb.draw(primitive.count, 1, primitive.first, 0, 0);
 
     ctx.dcb.end_rendering();
 

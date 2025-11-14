@@ -48,7 +48,7 @@ void Engine::update()
             continue;
         }
 
-        m_device->begin_frame();
+        if (!m_device->begin_frame()) continue;
         m_renderer->render();
         m_device->end_frame();
     }

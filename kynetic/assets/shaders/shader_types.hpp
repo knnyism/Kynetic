@@ -4,12 +4,12 @@
 
 #pragma once
 
-#if !defined(__SLANG__)
+#if defined(__SLANG__)
+#define VkDeviceAddress uint64_t
+#else
 using float3 = glm::vec3;
 using float4 = glm::vec4;
 using float4x4 = glm::mat4;
-#else
-#define VkDeviceAddress uint64_t
 #endif
 
 struct Vertex

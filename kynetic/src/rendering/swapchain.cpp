@@ -71,7 +71,7 @@ Swapchain& Swapchain::operator=(Swapchain&& other) noexcept
     return *this;
 }
 
-void Swapchain::swap(VkSemaphore semaphore)
+VkResult Swapchain::swap(VkSemaphore semaphore)
 {
-    VK_CHECK(vkAcquireNextImageKHR(m_device, m_swapchain, 1000000000, semaphore, nullptr, &m_image_index));
+    return vkAcquireNextImageKHR(m_device, m_swapchain, 1000000000, semaphore, nullptr, &m_image_index);
 }
