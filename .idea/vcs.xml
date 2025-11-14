@@ -2,5 +2,11 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/fastgltf-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/fmt-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/glm-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/imgui-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/sdl3-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/vk-bootstrap-src" vcs="Git" />
   </component>
 </project>
