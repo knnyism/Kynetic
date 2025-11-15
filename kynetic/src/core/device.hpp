@@ -22,7 +22,7 @@ struct QueueIndices
     uint32_t present;
 };
 
-constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 3;
+constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 4;
 
 class Device
 {

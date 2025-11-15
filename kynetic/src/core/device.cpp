@@ -57,8 +57,8 @@ Device::Device()
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
                                               .set_required_features_11(features_11)
-                                              .set_required_features_13(features_13)
                                               .set_required_features_12(features_12)
+                                              .set_required_features_13(features_13)
                                               .set_required_features(features)
                                               .set_surface(m_surface)
                                               .select()
@@ -233,15 +233,15 @@ void Device::end_frame()
     uint32_t image_index = m_swapchain->m_image_index;
     uint32_t frame_index = m_frame_count % static_cast<uint32_t>(m_syncs.size());
 
-    VkRenderingAttachmentInfo colorAttachment =
+    VkRenderingAttachmentInfo color_attachment =
         vk_init::attachment_info(m_swapchain->get_image_view(), nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo renderInfo = vk_init::rendering_info(m_swapchain->m_extent, &colorAttachment, nullptr);
+    VkRenderingInfo render_info = vk_init::rendering_info(m_swapchain->m_extent, &color_attachment, nullptr);
 
-    vkCmdBeginRendering(ctx.dcb.m_command_buffer, &renderInfo);
+    vkCmdBeginRendering(ctx.dcb.m_command_buffer, &render_info);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.dcb.m_command_buffer);
     vkCmdEndRendering(ctx.dcb.m_command_buffer);
 
-    ctx.dcb.transition_image(m_swapchain->get_video_out(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    ctx.dcb.transition_image(m_swapchain->get_video_out(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     VK_CHECK(vkEndCommandBuffer(ctx.dcb.m_command_buffer));
 

@@ -146,8 +146,6 @@ void Renderer::render()
         .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
         .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
 
-    ImGui::Render();
-
     ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
     Effect& effect = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
@@ -198,6 +196,7 @@ void Renderer::render()
     ctx.dcb.transition_image(m_render_target.image,
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
     ctx.dcb.transition_image(video_out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     ctx.dcb.copy_image_to_image(m_render_target.image, video_out, draw_extent, device_extent);
