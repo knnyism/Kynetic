@@ -1,10 +1,11 @@
 //
-// Created by kennypc on 11/4/25.
+// Created by kenny on 11/4/25.
 //
 
 #pragma once
 
 #include "rendering/command_buffer.hpp"
+#include "rendering/descriptor_allocator.hpp"
 
 struct SDL_Window;
 
@@ -13,6 +14,7 @@ namespace kynetic
 struct Context
 {
     CommandBuffer dcb;
+    DescriptorAllocatorGrowable allocator;
     DeletionQueue deletion_queue;
 };
 
@@ -56,11 +58,9 @@ class Device
 
     std::unique_ptr<class Swapchain> m_swapchain;
 
-    DescriptorAllocator m_descriptor_allocator;
-
     VkFence m_immediate_fence;
-    VkCommandPool m_immediate_command_pool;
-    VkCommandBuffer m_immediate_command_buffer;
+
+    CommandBuffer m_immediate_command_buffer;
 
     VkDescriptorPool imgui_descriptor_pool;
 
@@ -96,9 +96,9 @@ public:
     [[nodiscard]] Slang::ComPtr<slang::IGlobalSession>& get_slang_session() { return m_slang_session; }
     [[nodiscard]] const Slang::ComPtr<slang::IGlobalSession>& get_slang_session() const { return m_slang_session; }
 
-    [[nodiscard]] const DescriptorAllocator& get_descriptor_allocator() const { return m_descriptor_allocator; }
-
     [[nodiscard]] const VkImage& get_video_out() const;
+
+    [[nodiscard]] VmaAllocator get_allocator() const { return m_allocator; };
 
     bool is_minimized() const;
     bool is_running() const;
@@ -117,12 +117,15 @@ public:
                                 VkMemoryPropertyFlags property_flags,
                                 VkImageAspectFlags aspect_flags) const;
 
+    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+    AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+
     void destroy_image(const AllocatedImage& image) const;
 
     AllocatedBuffer create_buffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memory_usage) const;
     void destroy_buffer(const AllocatedBuffer& buffer) const;
 
     void wait_idle() const;
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const;
+    void immediate_submit(std::function<void(CommandBuffer& cmd)>&& function);
 };
 }  // namespace kynetic

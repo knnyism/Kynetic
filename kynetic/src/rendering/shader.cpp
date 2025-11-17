@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/6/25.
+// Created by kenny on 11/6/25.
 //
 
 #include "core/device.hpp"
@@ -81,17 +81,11 @@ Shader::~Shader()
 {
     Device& device = Engine::get().device();
 
-    if (m_pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device.get(), m_pipeline_layout, nullptr);
-
-    for (VkDescriptorSetLayout layout : m_descriptor_set_layouts)
-        if (layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(device.get(), layout, nullptr);
-
     if (m_shader_module != VK_NULL_HANDLE) vkDestroyShaderModule(device.get(), m_shader_module, nullptr);
 }
 
 void Shader::reflect(slang::IComponentType* linked_program)
 {
-    Device& device = Engine::get().device();
     slang::ProgramLayout* program_layout = linked_program->getLayout();
 
     VkShaderStageFlags stage_flags = 0;
@@ -103,16 +97,12 @@ void Shader::reflect(slang::IComponentType* linked_program)
         stage_flags |= vk_util::slang_to_vk_stage(entry_point->getStage());
     }
 
-    std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> bindings_by_set;
-    std::vector<VkPushConstantRange> push_constant_ranges;
-
     SlangUInt param_count = program_layout->getParameterCount();
     for (SlangUInt i = 0; i < param_count; ++i)
     {
         slang::VariableLayoutReflection* param = program_layout->getParameterByIndex(static_cast<unsigned>(i));
         slang::TypeLayoutReflection* type_layout = param->getTypeLayout();
 
-        // Handle pure push constants
         if (type_layout->getKind() == slang::TypeReflection::Kind::ConstantBuffer &&
             param->getCategory() == slang::ParameterCategory::PushConstantBuffer)
         {
@@ -122,7 +112,7 @@ void Shader::reflect(slang::IComponentType* linked_program)
             range.size = static_cast<uint32_t>(element_type->getSize());
             range.stageFlags = stage_flags;
 
-            push_constant_ranges.push_back(range);
+            m_push_constant_ranges.push_back(range);
             continue;
         }
 
@@ -143,7 +133,7 @@ void Shader::reflect(slang::IComponentType* linked_program)
                 vk_binding.descriptorCount = static_cast<uint32_t>(type_layout->getElementCount());
             }
 
-            bindings_by_set[static_cast<uint32_t>(space)].push_back(vk_binding);
+            m_bindings_by_set[static_cast<uint32_t>(space)].push_back(vk_binding);
 
             BindingInfo info;
             info.set = static_cast<uint32_t>(space);
@@ -155,24 +145,4 @@ void Shader::reflect(slang::IComponentType* linked_program)
             m_binding_map[info.name] = info;
         }
     }
-
-    m_descriptor_set_layouts.resize(bindings_by_set.empty() ? 0 : bindings_by_set.rbegin()->first + 1, VK_NULL_HANDLE);
-
-    for (auto& [set_index, bindings] : bindings_by_set)
-    {
-        VkDescriptorSetLayoutCreateInfo layout_info{};
-        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-        layout_info.pBindings = bindings.data();
-        VK_CHECK(vkCreateDescriptorSetLayout(device.get(), &layout_info, nullptr, &m_descriptor_set_layouts[set_index]));
-    }
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info{};
-    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = static_cast<uint32_t>(m_descriptor_set_layouts.size());
-    pipeline_layout_info.pSetLayouts = m_descriptor_set_layouts.data();
-    pipeline_layout_info.pushConstantRangeCount = static_cast<uint32_t>(push_constant_ranges.size());
-    pipeline_layout_info.pPushConstantRanges = push_constant_ranges.empty() ? nullptr : push_constant_ranges.data();
-
-    VK_CHECK(vkCreatePipelineLayout(device.get(), &pipeline_layout_info, nullptr, &m_pipeline_layout));
 }

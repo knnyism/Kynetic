@@ -1,11 +1,10 @@
 //
-// Created by kennypc on 11/4/25.
+// Created by kenny on 11/4/25.
 //
 
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_vulkan.h"
 #include "VkBootstrap.h"
-#include "vk_mem_alloc.h"
 
 #include "core/device.hpp"
 
@@ -88,13 +87,20 @@ Device::Device()
         VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &m_syncs[i].in_flight_fence));
     }
 
-    for (auto& ctx : m_ctxs) ctx.dcb.init(m_device, m_queue_indices.graphics);
+    std::vector<PoolSizeRatio> frame_sizes = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
+    };
 
-    VkCommandPoolCreateInfo command_pool_info =
-        vk_init::command_pool_create_info(m_queue_indices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    VK_CHECK(vkCreateCommandPool(m_device, &command_pool_info, nullptr, &m_immediate_command_pool));
-    VkCommandBufferAllocateInfo cmdAllocInfo = vk_init::command_buffer_allocate_info(m_immediate_command_pool, 1);
-    VK_CHECK(vkAllocateCommandBuffers(m_device, &cmdAllocInfo, &m_immediate_command_buffer));
+    for (auto& ctx : m_ctxs)
+    {
+        ctx.dcb.init(m_device, m_queue_indices.graphics);
+        ctx.allocator.init_pool(m_device, 1000, frame_sizes);
+    }
+
+    m_immediate_command_buffer.init(m_device, m_queue_indices.graphics);
     VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &m_immediate_fence));
 
     VmaAllocatorCreateInfo allocator_info = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
@@ -102,14 +108,6 @@ Device::Device()
                                              .device = m_device,
                                              .instance = m_instance};
     vmaCreateAllocator(&allocator_info, &m_allocator);
-
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4},
-        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 4},
-    };
-    m_descriptor_allocator.init_pool(m_device, 1000, sizes);
 
     VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
@@ -163,18 +161,17 @@ Device::~Device()
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(m_device, imgui_descriptor_pool, nullptr);
 
-    m_descriptor_allocator.destroy_pool(m_device);
-
-    vmaDestroyAllocator(m_allocator);
-
     vkDestroyFence(m_device, m_immediate_fence, nullptr);
-    vkDestroyCommandPool(m_device, m_immediate_command_pool, nullptr);
+    m_immediate_command_buffer.shutdown();
 
     for (auto& ctx : m_ctxs)
     {
-        ctx.dcb.shutdown();
         ctx.deletion_queue.flush();
+        ctx.allocator.destroy_pool();
+        ctx.dcb.shutdown();
     }
+
+    vmaDestroyAllocator(m_allocator);
 
     for (auto sync : m_syncs)
     {
@@ -205,6 +202,8 @@ bool Device::begin_frame()
     VK_CHECK(vkWaitForFences(m_device, 1, &m_syncs[frame_index].in_flight_fence, true, 1000000000));
 
     ctx.deletion_queue.flush();
+    ctx.allocator.clear_descriptors();
+
     VkResult result = m_swapchain->acquire_next_image(m_syncs[frame_index].image_available);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -241,7 +240,9 @@ void Device::end_frame()
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.dcb.m_command_buffer);
     vkCmdEndRendering(ctx.dcb.m_command_buffer);
 
-    ctx.dcb.transition_image(m_swapchain->get_video_out(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    ctx.dcb.transition_image(m_swapchain->get_video_out(),
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     VK_CHECK(vkEndCommandBuffer(ctx.dcb.m_command_buffer));
 
@@ -364,6 +365,74 @@ AllocatedImage Device::create_image(const VkExtent2D extent,
                         aspect_flags);
 }
 
+AllocatedImage Device::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped) const
+{
+    AllocatedImage new_image;
+    new_image.format = format;
+    new_image.extent = size;
+
+    VkImageCreateInfo img_info = vk_init::image_create_info(format, usage, size);
+    if (mipmapped) img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    alloc_info.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VK_CHECK(vmaCreateImage(m_allocator, &img_info, &alloc_info, &new_image.image, &new_image.allocation, nullptr));
+
+    VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (format == VK_FORMAT_D32_SFLOAT) aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+    VkImageViewCreateInfo view_info = vk_init::imageview_create_info(format, new_image.image, aspectFlag);
+    view_info.subresourceRange.levelCount = img_info.mipLevels;
+
+    VK_CHECK(vkCreateImageView(m_device, &view_info, nullptr, &new_image.view));
+
+    return new_image;
+}
+
+AllocatedImage Device::create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
+{
+    size_t data_size = size.depth * size.width * size.height * 4;
+
+    AllocatedBuffer upload_buffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    memcpy(upload_buffer.info.pMappedData, data, data_size);
+
+    AllocatedImage new_image =
+        create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+
+    immediate_submit(
+        [&](const CommandBuffer& cmd)
+        {
+            cmd.transition_image(new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkBufferImageCopy copy_region = {};
+            copy_region.bufferOffset = 0;
+            copy_region.bufferRowLength = 0;
+            copy_region.bufferImageHeight = 0;
+
+            copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copy_region.imageSubresource.mipLevel = 0;
+            copy_region.imageSubresource.baseArrayLayer = 0;
+            copy_region.imageSubresource.layerCount = 1;
+            copy_region.imageExtent = size;
+
+            cmd.copy_buffer_to_image(upload_buffer.buffer,
+                                     new_image.image,
+                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                     1,
+                                     &copy_region);
+
+            cmd.transition_image(new_image.image,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        });
+
+    destroy_buffer(upload_buffer);
+
+    return new_image;
+}
+
 void Device::destroy_image(const AllocatedImage& image) const
 {
     vkDestroyImageView(m_device, image.view, nullptr);
@@ -395,20 +464,20 @@ void Device::destroy_buffer(const AllocatedBuffer& buffer) const
 
 void Device::wait_idle() const { vkDeviceWaitIdle(m_device); }
 
-void Device::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function) const
+void Device::immediate_submit(std::function<void(CommandBuffer& cmd)>&& function)
 {
     VK_CHECK(vkResetFences(m_device, 1, &m_immediate_fence));
-    VK_CHECK(vkResetCommandBuffer(m_immediate_command_buffer, 0));
+    m_immediate_command_buffer.reset();
 
     VkCommandBufferBeginInfo begin_info = vk_init::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-    VK_CHECK(vkBeginCommandBuffer(m_immediate_command_buffer, &begin_info));
+    VK_CHECK(vkBeginCommandBuffer(m_immediate_command_buffer.m_command_buffer, &begin_info));
 
     function(m_immediate_command_buffer);
 
-    VK_CHECK(vkEndCommandBuffer(m_immediate_command_buffer));
+    VK_CHECK(vkEndCommandBuffer(m_immediate_command_buffer.m_command_buffer));
 
-    VkCommandBufferSubmitInfo submit_info = vk_init::command_buffer_submit_info(m_immediate_command_buffer);
+    VkCommandBufferSubmitInfo submit_info = vk_init::command_buffer_submit_info(m_immediate_command_buffer.m_command_buffer);
     VkSubmitInfo2 submit = vk_init::submit_info(&submit_info, nullptr, nullptr);
 
     VK_CHECK(vkQueueSubmit2(m_graphics_queue, 1, &submit, m_immediate_fence));

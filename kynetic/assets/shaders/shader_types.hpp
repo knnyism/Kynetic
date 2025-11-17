@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/13/25.
+// Created by kenny on 11/13/25.
 //
 
 #pragma once
@@ -12,6 +12,7 @@ using float4 = glm::vec4;
 using float4x4 = glm::mat4;
 
 using int2 = glm::ivec2;
+#define column_major
 #endif
 
 struct Vertex
@@ -25,7 +26,6 @@ struct Vertex
 
 struct DrawPushConstants
 {
-    float4x4 world_matrix;
     VkDeviceAddress vertex_buffer;
 };
 
@@ -37,4 +37,14 @@ struct GradientPushConstants
     float4 data4;
 
     int2 size;
+};
+
+struct SceneData
+{
+    column_major float4x4 view;
+    column_major float4x4 proj;
+    column_major float4x4 vp;
+    float4 ambient_color;
+    float4 sun_direction;
+    float4 sun_color;
 };

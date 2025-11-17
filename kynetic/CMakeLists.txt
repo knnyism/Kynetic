@@ -78,6 +78,7 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/g-truc/glm.git
         GIT_TAG 1.0.1
 )
+
 FetchContent_MakeAvailable(glm)
 
 # fastgltf
@@ -109,24 +110,24 @@ target_include_directories(stb_image INTERFACE ${stb_SOURCE_DIR})
 
 # slang
 if (WIN32)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(SLANG_PLATFORM "windows-x86_64")
-    else()
+    else ()
         set(SLANG_PLATFORM "windows-x86")
-    endif()
+    endif ()
 elseif (UNIX AND NOT APPLE)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(SLANG_PLATFORM "linux-x86_64")
-    else()
+    else ()
         set(SLANG_PLATFORM "linux-x86")
-    endif()
+    endif ()
 elseif (APPLE)
     # Check for Apple Silicon vs Intel
-    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         set(SLANG_PLATFORM "macos-aarch64")
-    else()
+    else ()
         set(SLANG_PLATFORM "macos-x86_64")
-    endif()
+    endif ()
 endif ()
 
 message(STATUS "Detected Slang platform: ${SLANG_PLATFORM}")
@@ -141,13 +142,13 @@ FetchContent_MakeAvailable(slang)
 add_library(slang INTERFACE)
 target_include_directories(slang INTERFACE ${slang_SOURCE_DIR}/include)
 
-if(WIN32)
+if (WIN32)
     set(SLANG_LIB_NAMES slang.lib slang.dll.lib)
     set(SLANG_LIB_DIR ${slang_SOURCE_DIR}/lib ${slang_SOURCE_DIR}/bin)
-else()
+else ()
     set(SLANG_LIB_NAMES slang libslang libslang.so libslang.dylib)
     set(SLANG_LIB_DIR ${slang_SOURCE_DIR}/lib ${slang_SOURCE_DIR}/lib64)
-endif()
+endif ()
 
 find_library(SLANG_LIBRARY
         NAMES ${SLANG_LIB_NAMES}
@@ -160,22 +161,48 @@ message(STATUS "Found Slang library: ${SLANG_LIBRARY}")
 
 target_link_libraries(slang INTERFACE ${SLANG_LIBRARY})
 
-if(WIN32)
+if (WIN32)
     file(GLOB SLANG_DLLS "${slang_SOURCE_DIR}/bin/*.dll")
-    if(SLANG_DLLS)
-        foreach(DLL ${SLANG_DLLS})
+    if (SLANG_DLLS)
+        foreach (DLL ${SLANG_DLLS})
             message(STATUS "Copying Slang DLL: ${DLL}")
             configure_file(${DLL} ${CMAKE_BINARY_DIR} COPYONLY)
-        endforeach()
-    endif()
-endif()
-
-file(GLOB_RECURSE KYNETIC_SOURCES "src/*.cpp")
-file(GLOB_RECURSE KYNETIC_HEADERS "src/*.hpp")
+        endforeach ()
+    endif ()
+endif ()
 
 add_library(kynetic STATIC
-        ${KYNETIC_SOURCES}
-        ${KYNETIC_HEADERS}
+        assets/shaders/shader_types.hpp
+        src/core/device.cpp
+        src/core/device.hpp
+        src/core/engine.cpp
+        src/core/engine.hpp
+        src/core/renderer.cpp
+        src/core/renderer.hpp
+        src/core/resource_manager.cpp
+        src/core/resource_manager.hpp
+        src/rendering/command_buffer.cpp
+        src/rendering/command_buffer.hpp
+        src/rendering/mesh.cpp
+        src/rendering/mesh.hpp
+        src/rendering/model.cpp
+        src/rendering/model.hpp
+        src/rendering/pipeline.cpp
+        src/rendering/pipeline.hpp
+        src/rendering/shader.cpp
+        src/rendering/shader.hpp
+        src/rendering/swapchain.cpp
+        src/rendering/swapchain.hpp
+        src/pch.cpp
+        src/pch.hpp
+        src/rendering/descriptor_allocator.cpp
+        src/rendering/descriptor_allocator.hpp
+        src/rendering/descriptor_writer.cpp
+        src/rendering/descriptor_writer.hpp
+        src/vma_usage.cpp
+        src/vma_usage.hpp
+        src/rendering/texture.cpp
+        src/rendering/texture.hpp
 )
 
 target_link_libraries(kynetic PUBLIC
@@ -201,6 +228,11 @@ target_include_directories(kynetic PUBLIC
 
 target_precompile_headers(kynetic PUBLIC
         src/pch.hpp
+)
+
+target_compile_definitions(kynetic PUBLIC
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_ENABLE_EXPERIMENTAL
 )
 
 if (WIN32)

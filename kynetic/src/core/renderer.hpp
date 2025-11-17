@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/5/25.
+// Created by kenny on 11/5/25.
 //
 
 #pragma once
@@ -18,7 +18,6 @@ class Renderer
     int m_frame_count{0};
 
     std::shared_ptr<class Shader> m_gradient;
-    VkDescriptorSet m_gradient_descriptor_set{VK_NULL_HANDLE};
 
     std::shared_ptr<Shader> m_triangle_frag;
     std::shared_ptr<Shader> m_triangle_vert;
@@ -43,7 +42,6 @@ class Renderer
 
     void init_render_target();
     void destroy_render_target() const;
-    void update_gradient_descriptor() const;
 
 public:
     Renderer();

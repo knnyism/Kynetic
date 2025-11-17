@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/14/25.
+// Created by kenny on 11/14/25.
 //
 
 #include "mesh.hpp"

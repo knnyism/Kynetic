@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/13/25.
+// Created by kenny on 11/13/25.
 //
 
 #include "mesh.hpp"
@@ -7,8 +7,7 @@
 #include "core/device.hpp"
 #include "core/engine.hpp"
 
-#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
+#include "vma_usage.hpp"
 
 using namespace kynetic;
 
@@ -41,26 +40,28 @@ Mesh::Mesh(const std::filesystem::path& path,
                                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                                    VMA_MEMORY_USAGE_CPU_ONLY);
 
-    void* data = staging.allocation->GetMappedData();
+    void* data;
+    vmaMapMemory(device.get_allocator(), staging.allocation, &data);
     memcpy(data, vertices.data(), vertex_buffer_size);
     memcpy(static_cast<char*>(data) + vertex_buffer_size, indices.data(), index_buffer_size);
+    vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
     device.immediate_submit(
-        [&](VkCommandBuffer cmd)
+        [&](const CommandBuffer& cmd)
         {
             VkBufferCopy vertex_copy{0};
             vertex_copy.dstOffset = 0;
             vertex_copy.srcOffset = 0;
             vertex_copy.size = vertex_buffer_size;
 
-            vkCmdCopyBuffer(cmd, staging.buffer, m_vertex_buffer.buffer, 1, &vertex_copy);
+            cmd.copy_buffer(staging.buffer, m_vertex_buffer.buffer, 1, &vertex_copy);
 
             VkBufferCopy index_copy{0};
             index_copy.dstOffset = 0;
             index_copy.srcOffset = vertex_buffer_size;
             index_copy.size = index_buffer_size;
 
-            vkCmdCopyBuffer(cmd, staging.buffer, m_index_buffer.buffer, 1, &index_copy);
+            cmd.copy_buffer(staging.buffer, m_index_buffer.buffer, 1, &index_copy);
         });
 
     device.destroy_buffer(staging);

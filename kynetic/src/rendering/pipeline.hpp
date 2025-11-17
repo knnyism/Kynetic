@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/6/25.
+// Created by kenny on 11/6/25.
 //
 
 #pragma once
@@ -21,9 +21,17 @@ class Pipeline
     VkPipeline m_pipeline{VK_NULL_HANDLE};
     VkPipelineLayout m_layout{VK_NULL_HANDLE};
 
+    std::vector<VkDescriptorSetLayout> m_set_layouts;
+
 public:
-    Pipeline(VkDevice device, const VkComputePipelineCreateInfo& pipeline_info);
-    Pipeline(VkDevice device, const VkGraphicsPipelineCreateInfo& pipeline_info);
+    Pipeline(VkDevice device,
+             const std::vector<VkDescriptorSetLayout>& set_layouts,
+             const std::vector<VkPushConstantRange>& push_constant_ranges,
+             VkComputePipelineCreateInfo pipeline_info);
+    Pipeline(VkDevice device,
+             const std::vector<VkDescriptorSetLayout>& set_layouts,
+             const std::vector<VkPushConstantRange>& push_constant_ranges,
+             VkGraphicsPipelineCreateInfo pipeline_info);
     ~Pipeline();
 
     Pipeline(const Pipeline&) = delete;
@@ -33,6 +41,23 @@ public:
 
     [[nodiscard]] const VkPipeline& get() const { return m_pipeline; }
     [[nodiscard]] const VkPipelineLayout& get_layout() const { return m_layout; }
+
+    [[nodiscard]] const VkDescriptorSetLayout& get_set_layout(uint32_t set_index) const { return m_set_layouts[set_index]; }
+
+    [[nodiscard]] static VkShaderStageFlags get_shader_stage_flags(const ShaderStage stage)
+    {
+        switch (stage)
+        {
+            case ShaderStage::Compute:
+                return VK_SHADER_STAGE_COMPUTE_BIT;
+            case ShaderStage::Vertex:
+                return VK_SHADER_STAGE_VERTEX_BIT;
+            case ShaderStage::Fragment:
+                return VK_SHADER_STAGE_FRAGMENT_BIT;
+            default:
+                KX_ASSERT(false);
+        }
+    }
 
     [[nodiscard]] VkPipelineBindPoint bind_point() const
     {
@@ -50,8 +75,7 @@ public:
 
 class ComputePipelineBuilder
 {
-    VkPipelineShaderStageCreateInfo m_stage{};
-    VkPipelineLayout m_layout{VK_NULL_HANDLE};
+    std::shared_ptr<Shader> m_compute_shader;
     VkPipelineCreateFlags m_flags{0};
 
 public:
@@ -63,8 +87,8 @@ public:
 
 class GraphicsPipelineBuilder
 {
-    std::vector<VkPipelineShaderStageCreateInfo> m_stages;
-    std::vector<VkPipelineLayout> m_layouts;
+    std::shared_ptr<Shader> m_vertex_shader;
+    std::shared_ptr<Shader> m_fragment_shader;
     VkPipelineCreateFlags m_flags{0};
 
     VkPipelineInputAssemblyStateCreateInfo m_input_assembly{.sType =

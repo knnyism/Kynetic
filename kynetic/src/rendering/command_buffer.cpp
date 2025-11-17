@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/7/25.
+// Created by kenny on 11/7/25.
 //
 
 #include "pipeline.hpp"
@@ -91,6 +91,21 @@ void CommandBuffer::copy_image_to_image(VkImage source,
 
     vkCmdBlitImage2(m_command_buffer, &blitInfo);
 }
+void CommandBuffer::copy_buffer_to_image(VkBuffer srcBuffer,
+                                         VkImage dstImage,
+                                         VkImageLayout dstImageLayout,
+                                         uint32_t regionCount,
+                                         const VkBufferImageCopy* pRegions) const
+{
+    vkCmdCopyBufferToImage(m_command_buffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+}
+void CommandBuffer::copy_buffer(VkBuffer srcBuffer,
+                                VkBuffer dstBuffer,
+                                uint32_t regionCount,
+                                const VkBufferCopy* pRegions) const
+{
+    vkCmdCopyBuffer(m_command_buffer, srcBuffer, dstBuffer, regionCount, pRegions);
+}
 
 void CommandBuffer::begin_rendering(const VkRenderingInfo& rendering_info) const
 {
@@ -129,12 +144,14 @@ void CommandBuffer::bind_pipeline(Pipeline* pipeline)
     vkCmdBindPipeline(m_command_buffer, m_current_pipeline->bind_point(), m_current_pipeline->get());
 }
 
-void CommandBuffer::set_push_constants(VkShaderStageFlagBits stage_flags,
-                                       uint32_t size,
-                                       const void* data,
-                                       uint32_t offset) const
+void CommandBuffer::set_push_constants(ShaderStage stage, uint32_t size, const void* data, uint32_t offset) const
 {
-    vkCmdPushConstants(m_command_buffer, m_current_pipeline->get_layout(), stage_flags, offset, size, data);
+    vkCmdPushConstants(m_command_buffer,
+                       m_current_pipeline->get_layout(),
+                       m_current_pipeline->get_shader_stage_flags(stage),
+                       offset,
+                       size,
+                       data);
 }
 
 void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
@@ -148,6 +165,7 @@ void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
                             0,
                             nullptr);
 }
+
 void CommandBuffer::bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset) const
 {
     vkCmdBindIndexBuffer(m_command_buffer, index_buffer, offset, index_type);

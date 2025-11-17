@@ -1,6 +1,8 @@
 //
-// Created by kennypc on 11/5/25.
+// Created by kenny on 11/5/25.
 //
+
+#include "imgui.h"
 
 #include "device.hpp"
 #include "engine.hpp"
@@ -8,13 +10,14 @@
 
 #include "renderer.hpp"
 
-#include "imgui.h"
-
-#include "rendering/command_buffer.hpp"
+#include "rendering/descriptor_writer.hpp"
 #include "rendering/pipeline.hpp"
 #include "rendering/shader.hpp"
 #include "rendering/mesh.hpp"
 #include "rendering/model.hpp"
+
+#include "vk_mem_alloc.h"
+#include "rendering/texture.hpp"
 
 using namespace kynetic;
 
@@ -25,7 +28,6 @@ Renderer::Renderer()
     init_render_target();
 
     m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang");
-    m_gradient_descriptor_set = device.get_descriptor_allocator().allocate(device.get(), m_gradient->get_layout_at(0));
 
     m_triangle_frag = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.frag.slang");
     m_triangle_vert = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.vert.slang");
@@ -54,8 +56,6 @@ Renderer::Renderer()
     sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
 
     m_quad = Engine::get().resources().load<Model>("assets/shared_assets/models/basicmesh.glb");
-
-    update_gradient_descriptor();
 }
 
 Renderer::~Renderer()
@@ -91,24 +91,6 @@ void Renderer::destroy_render_target() const
     device.destroy_image(m_depth_render_target);
 }
 
-void Renderer::update_gradient_descriptor() const
-{
-    VkDescriptorImageInfo image_info;
-    image_info.sampler = VK_NULL_HANDLE;
-    image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    image_info.imageView = m_render_target.view;
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    write.dstSet = m_gradient_descriptor_set;
-    write.dstBinding = 0;
-    write.pImageInfo = &image_info;
-
-    vkUpdateDescriptorSets(Engine::get().device().get(), 1, &write, 0, nullptr);
-}
-
 void Renderer::render()
 {
     Device& device = Engine::get().device();
@@ -138,8 +120,6 @@ void Renderer::render()
 
         destroy_render_target();
         init_render_target();
-
-        update_gradient_descriptor();
     }
 
     const VkExtent2D draw_extent = {
@@ -152,8 +132,15 @@ void Renderer::render()
     effect.data.size = glm::ivec2(draw_extent.width, draw_extent.height);
 
     ctx.dcb.bind_pipeline(effect.pipeline.get());
-    ctx.dcb.bind_descriptors(m_gradient_descriptor_set);
-    ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(GradientPushConstants), &effect.data);
+    {
+        VkDescriptorSet gradient_descriptor = ctx.allocator.allocate(effect.pipeline->get_set_layout(0));
+
+        DescriptorWriter writer;
+        writer.write_image(0, m_render_target.view, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        writer.update_set(device.get(), gradient_descriptor);
+        ctx.dcb.bind_descriptors(gradient_descriptor);
+    }
+    ctx.dcb.set_push_constants(ShaderStage::Compute, sizeof(GradientPushConstants), &effect.data);
     ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.width) / 16.0f)),
                      static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.height) / 16.0f)),
                      1);
@@ -172,24 +159,55 @@ void Renderer::render()
     ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(sinf(static_cast<float>(m_frame_count) / 100), -0.5f, cosf(static_cast<float>(m_frame_count) / 100)) * 5.f,
-        glm::vec3(0, 0, 0),
-        glm::vec3(0, 1, 0));
-    glm::mat4 projection = glm::perspective(glm::radians(85.f),
+    float lol = sinf(static_cast<float>(m_frame_count) / 60.f);
+
+    glm::mat4 view = glm::translate(glm::vec3{0, 0, -5}) * glm::rotate(glm::radians(90.0f * lol), glm::vec3{0, 1, 0});
+    glm::mat4 projection = glm::perspective(glm::radians(70.f),
                                             static_cast<float>(draw_extent.width) / static_cast<float>(draw_extent.height),
-                                            0.1f,
-                                            100.f);
-    projection[1][1] *= -1.f;
+                                            1000.f,
+                                            0.1f);
+    projection[1][1] *= -1;
 
     DrawPushConstants push_constants;
-    push_constants.world_matrix = glm::transpose(projection * view);
     push_constants.vertex_buffer = m_quad->get_meshes()[2]->get_address();
 
     ctx.dcb.bind_pipeline(m_mesh_pipeline.get());
-    ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT, sizeof(DrawPushConstants), &push_constants);
+    {
+        AllocatedBuffer scene_data_buffer =
+            device.create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+        ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(scene_data_buffer); });
+
+        void* mapped_data;
+        vmaMapMemory(device.get_allocator(), scene_data_buffer.allocation, &mapped_data);
+        auto* scene_uniform_data = static_cast<SceneData*>(mapped_data);
+        scene_uniform_data->view = view;
+        scene_uniform_data->proj = projection;
+        scene_uniform_data->vp = projection * view;
+        scene_uniform_data->ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f);
+        scene_uniform_data->sun_direction = glm::vec4(0.f, -1.f, 0.f, 0.f);
+        scene_uniform_data->sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f);
+        vmaUnmapMemory(device.get_allocator(), scene_data_buffer.allocation);
+
+        VkDescriptorSet mesh_descriptor = ctx.allocator.allocate(m_mesh_pipeline->get_set_layout(0));
+        {
+            DescriptorWriter writer;
+            writer.write_buffer(0, scene_data_buffer.buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+            auto texture = Engine::get().resources().find<Texture>("dev/missing");
+            writer.write_image(1,
+                               texture->m_image.view,
+                               texture->m_sampler,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+            writer.update_set(device.get(), mesh_descriptor);
+        }
+
+        ctx.dcb.bind_descriptors(mesh_descriptor);
+    }
+
+    ctx.dcb.set_push_constants(ShaderStage::Vertex, sizeof(DrawPushConstants), &push_constants);
     ctx.dcb.bind_index_buffer(m_quad->get_meshes()[2]->get_indices(), m_quad->get_meshes()[2]->get_index_type());
-    for (auto& primitive : m_quad->get_meshes()[2]->get_primitives()) ctx.dcb.draw(primitive.count, 1, primitive.first, 0, 0);
+    for (const auto& primitive : m_quad->get_meshes()[2]->get_primitives())
+        ctx.dcb.draw(primitive.count, 1, primitive.first, 0, 0);
 
     ctx.dcb.end_rendering();
 

@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/7/25.
+// Created by kenny on 11/7/25.
 //
 
 #pragma once
@@ -24,6 +24,12 @@ public:
     void reset();
     void transition_image(VkImage image, VkImageLayout current_layout, VkImageLayout new_layout) const;
     void copy_image_to_image(VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize) const;
+    void copy_buffer_to_image(VkBuffer srcBuffer,
+                              VkImage dstImage,
+                              VkImageLayout dstImageLayout,
+                              uint32_t regionCount,
+                              const VkBufferImageCopy* pRegions) const;
+    void copy_buffer(VkBuffer srcBuffer, VkBuffer dstBuffer, uint32_t regionCount, const VkBufferCopy* pRegions) const;
 
     void begin_rendering(const VkRenderingInfo& rendering_info) const;
     void end_rendering() const;
@@ -34,7 +40,7 @@ public:
     void bind_pipeline(Pipeline* pipeline);
     void bind_descriptors(VkDescriptorSet descriptor_set) const;
     void bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset = 0) const;
-    void set_push_constants(VkShaderStageFlagBits stage_flags, uint32_t size, const void* data, uint32_t offset = 0) const;
+    void set_push_constants(ShaderStage stage, uint32_t size, const void* data, uint32_t offset = 0) const;
 
     void dispatch(uint32_t x, uint32_t y, uint32_t z) const;
 

@@ -1,5 +1,5 @@
 //
-// Created by kennypc on 11/4/25.
+// Created by kenny on 11/4/25.
 //
 
 #pragma once
@@ -20,8 +20,7 @@
 
 #include "glm/mat4x4.hpp"
 #include "glm/vec4.hpp"
-#include "glm/ext/matrix_clip_space.hpp"
-#include "glm/ext/matrix_transform.hpp"
+#include "glm/gtx/transform.hpp"
 
 #include "fastgltf/core.hpp"
 #include "fastgltf/types.hpp"
@@ -34,7 +33,7 @@
 
 #include "vulkan/vulkan.h"
 #include "vulkan/vk_enum_string_helper.h"
-#include "vk_mem_alloc.h"
+#include "vma_usage.hpp"
 
 #include "shader_types.hpp"
 
@@ -143,23 +142,6 @@ struct AllocatedBuffer
     VmaAllocationInfo info;
 };
 
-struct DescriptorAllocator
-{
-    struct PoolSizeRatio
-    {
-        VkDescriptorType type;
-        float ratio;
-    };
-
-    VkDescriptorPool pool;
-
-    void init_pool(VkDevice device, uint32_t max_sets, std::span<PoolSizeRatio> pool_ratios);
-    void clear_descriptors(VkDevice device) const;
-    void destroy_pool(VkDevice device) const;
-
-    VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
-};
-
 namespace kynetic
 {
 struct Resource
@@ -181,6 +163,14 @@ struct Resource
     Resource(const Type type, std::string path) : type(type), path(std::move(path)) {}
     virtual ~Resource() = default;
 };
+
+enum class ShaderStage
+{
+    Compute,
+    Vertex,
+    Fragment
+};
+
 }  // namespace kynetic
 
 namespace vk_init
