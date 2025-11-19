@@ -4,6 +4,7 @@
 
 #include "device.hpp"
 #include "resource_manager.hpp"
+#include "scene.hpp"
 #include "renderer.hpp"
 
 #include "engine.hpp"
@@ -19,6 +20,7 @@ Engine::Engine()
 
     m_device = std::make_unique<Device>();
     m_resource_manager = std::make_unique<ResourceManager>();
+    m_scene = std::make_unique<Scene>();
     m_renderer = std::make_unique<Renderer>();
 }
 
@@ -41,6 +43,7 @@ void Engine::update()
     while (m_device->is_running())
     {
         m_device->update();
+        m_scene->update();
 
         if (m_device->is_minimized())
         {

@@ -85,7 +85,7 @@ FetchContent_MakeAvailable(glm)
 FetchContent_Declare(
         fastgltf
         GIT_REPOSITORY https://github.com/spnda/fastgltf.git
-        GIT_TAG v0.8.0
+        GIT_TAG v0.9.0
 )
 FetchContent_MakeAvailable(fastgltf)
 
@@ -107,6 +107,21 @@ FetchContent_MakeAvailable(stb)
 
 add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE ${stb_SOURCE_DIR})
+
+# flecs
+FetchContent_Declare(
+        flecs
+        GIT_REPOSITORY https://github.com/SanderMertens/flecs.git
+        GIT_TAG v4.1.2
+)
+
+set(FLECS_STATIC ON)
+set(FLECS_SHARED OFF)
+set(FLECS_PIC ON)
+set(FLECS_TESTS OFF)
+set(FLECS_EXAMPLES OFF)
+
+FetchContent_MakeAvailable(flecs)
 
 # slang
 if (WIN32)
@@ -172,6 +187,8 @@ if (WIN32)
 endif ()
 
 add_library(kynetic STATIC
+        src/pch.cpp
+        src/pch.hpp
         assets/shaders/shader_types.hpp
         src/core/device.cpp
         src/core/device.hpp
@@ -193,16 +210,17 @@ add_library(kynetic STATIC
         src/rendering/shader.hpp
         src/rendering/swapchain.cpp
         src/rendering/swapchain.hpp
-        src/pch.cpp
-        src/pch.hpp
         src/rendering/descriptor_allocator.cpp
         src/rendering/descriptor_allocator.hpp
         src/rendering/descriptor_writer.cpp
         src/rendering/descriptor_writer.hpp
-        src/vma_usage.cpp
-        src/vma_usage.hpp
         src/rendering/texture.cpp
         src/rendering/texture.hpp
+        src/vma_usage.cpp
+        src/vma_usage.hpp
+        src/core/components.hpp
+        src/core/scene.cpp
+        src/core/scene.hpp
 )
 
 target_link_libraries(kynetic PUBLIC
@@ -217,6 +235,7 @@ target_link_libraries(kynetic PUBLIC
         fmt::fmt
         stb_image
         slang
+        flecs::flecs_static
 )
 
 target_compile_features(kynetic PUBLIC cxx_std_20)

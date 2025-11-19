@@ -20,27 +20,22 @@ public:
     };
 
 private:
-    VkShaderModule m_shader_module;
     std::filesystem::file_time_type m_last_modified;
 
-    std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> m_bindings_by_set;
+    std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> m_bindings;
     std::vector<VkPushConstantRange> m_push_constant_ranges;
 
-    std::map<std::string, BindingInfo> m_binding_map;
+    std::vector<VkShaderModule> m_modules;
+    std::vector<VkPipelineShaderStageCreateInfo> m_stages;
 
     void reflect(slang::IComponentType* linked_program);
 
 public:
-    Shader(const std::filesystem::path& path, const std::string& entry_point_name = "main");
+    Shader(const std::filesystem::path& path);
     ~Shader() override;
 
-    [[nodiscard]] const VkShaderModule& get_module() const { return m_shader_module; }
-
     [[nodiscard]] const std::vector<VkPushConstantRange>& get_push_constant_ranges() const { return m_push_constant_ranges; }
-    [[nodiscard]] const std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& get_bindings()
-    {
-        return m_bindings_by_set;
-    }
-    [[nodiscard]] const std::map<std::string, BindingInfo>& get_binding_map() const { return m_binding_map; }
+    [[nodiscard]] const std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& get_bindings() { return m_bindings; }
+    [[nodiscard]] const std::vector<VkPipelineShaderStageCreateInfo>& get_stages() const { return m_stages; }
 };
 }  // namespace kynetic

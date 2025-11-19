@@ -26,6 +26,7 @@ struct Vertex
 
 struct DrawPushConstants
 {
+    column_major float4x4 model;
     VkDeviceAddress vertex_buffer;
 };
 

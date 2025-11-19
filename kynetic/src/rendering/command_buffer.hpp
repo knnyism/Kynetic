@@ -39,8 +39,9 @@ public:
 
     void bind_pipeline(Pipeline* pipeline);
     void bind_descriptors(VkDescriptorSet descriptor_set) const;
+    void bind_vertex_buffer(uint32_t firstBinding, uint32_t bindingCount, VkBuffer vertex_buffer, VkDeviceSize offset) const;
     void bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset = 0) const;
-    void set_push_constants(ShaderStage stage, uint32_t size, const void* data, uint32_t offset = 0) const;
+    void set_push_constants(VkShaderStageFlags stage_flage, uint32_t size, const void* data, uint32_t offset = 0) const;
 
     void dispatch(uint32_t x, uint32_t y, uint32_t z) const;
 

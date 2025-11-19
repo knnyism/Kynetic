@@ -6,6 +6,7 @@
 
 #include "device.hpp"
 #include "engine.hpp"
+#include "scene.hpp"
 #include "resource_manager.hpp"
 
 #include "renderer.hpp"
@@ -15,9 +16,11 @@
 #include "rendering/shader.hpp"
 #include "rendering/mesh.hpp"
 #include "rendering/model.hpp"
+#include "rendering/texture.hpp"
+
+#include "core/components.hpp"
 
 #include "vk_mem_alloc.h"
-#include "rendering/texture.hpp"
 
 using namespace kynetic;
 
@@ -28,21 +31,19 @@ Renderer::Renderer()
     init_render_target();
 
     m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang");
+    m_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/lit.slang");
 
-    m_triangle_frag = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.frag.slang");
-    m_triangle_vert = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/triangle.vert.slang");
-
-    m_mesh_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                     .set_shader(m_triangle_vert, m_triangle_frag)
-                                                     .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                     .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                     .set_color_attachment_format(m_render_target.format)
-                                                     .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-                                                     .set_depth_format(m_depth_render_target.format)
-                                                     .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
-                                                     .set_multisampling_none()
-                                                     .disable_blending()
-                                                     .build(device.get()));
+    m_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                                    .set_shader(m_lit_shader)
+                                                    .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                                    .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                                    .set_color_attachment_format(m_render_target.format)
+                                                    .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                                                    .set_depth_format(m_depth_render_target.format)
+                                                    .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+                                                    .set_multisampling_none()
+                                                    .disable_blending()
+                                                    .build(device.get()));
 
     Effect& gradient = backgroundEffects.emplace_back(
         "gradient",
@@ -55,7 +56,9 @@ Renderer::Renderer()
         std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_gradient).build(device.get())));
     sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
 
-    m_quad = Engine::get().resources().load<Model>("assets/shared_assets/models/basicmesh.glb");
+    m_model = Engine::get().resources().load<Model>("assets/shared_assets/models/lantern.glb");
+
+    Engine::get().scene().add_model(m_model);
 }
 
 Renderer::~Renderer()
@@ -140,7 +143,7 @@ void Renderer::render()
         writer.update_set(device.get(), gradient_descriptor);
         ctx.dcb.bind_descriptors(gradient_descriptor);
     }
-    ctx.dcb.set_push_constants(ShaderStage::Compute, sizeof(GradientPushConstants), &effect.data);
+    ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(GradientPushConstants), &effect.data);
     ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.width) / 16.0f)),
                      static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.height) / 16.0f)),
                      1);
@@ -159,19 +162,14 @@ void Renderer::render()
     ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-    float lol = sinf(static_cast<float>(m_frame_count) / 60.f);
-
-    glm::mat4 view = glm::translate(glm::vec3{0, 0, -5}) * glm::rotate(glm::radians(90.0f * lol), glm::vec3{0, 1, 0});
+    glm::mat4 view = glm::lookAt(glm::vec3{25, 25, 25}, glm::vec3{0, 10.f, 0}, glm::vec3{0, 1, 0});
     glm::mat4 projection = glm::perspective(glm::radians(70.f),
                                             static_cast<float>(draw_extent.width) / static_cast<float>(draw_extent.height),
                                             1000.f,
                                             0.1f);
     projection[1][1] *= -1;
 
-    DrawPushConstants push_constants;
-    push_constants.vertex_buffer = m_quad->get_meshes()[2]->get_address();
-
-    ctx.dcb.bind_pipeline(m_mesh_pipeline.get());
+    ctx.dcb.bind_pipeline(m_lit_pipeline.get());
     {
         AllocatedBuffer scene_data_buffer =
             device.create_buffer(sizeof(SceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -188,7 +186,7 @@ void Renderer::render()
         scene_uniform_data->sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f);
         vmaUnmapMemory(device.get_allocator(), scene_data_buffer.allocation);
 
-        VkDescriptorSet mesh_descriptor = ctx.allocator.allocate(m_mesh_pipeline->get_set_layout(0));
+        VkDescriptorSet mesh_descriptor = ctx.allocator.allocate(m_lit_pipeline->get_set_layout(0));
         {
             DescriptorWriter writer;
             writer.write_buffer(0, scene_data_buffer.buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
@@ -200,14 +198,22 @@ void Renderer::render()
                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
             writer.update_set(device.get(), mesh_descriptor);
         }
-
         ctx.dcb.bind_descriptors(mesh_descriptor);
     }
 
-    ctx.dcb.set_push_constants(ShaderStage::Vertex, sizeof(DrawPushConstants), &push_constants);
-    ctx.dcb.bind_index_buffer(m_quad->get_meshes()[2]->get_indices(), m_quad->get_meshes()[2]->get_index_type());
-    for (const auto& primitive : m_quad->get_meshes()[2]->get_primitives())
-        ctx.dcb.draw(primitive.count, 1, primitive.first, 0, 0);
+    Engine::get().scene().get().query_builder<TransformComponent, MeshComponent>().build().each(
+        [&](const TransformComponent& transform, const MeshComponent& mesh)
+        {
+            DrawPushConstants push_constants;
+            push_constants.model = transform.transform;
+            push_constants.vertex_buffer = mesh.mesh->get_address();
+            ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                       sizeof(DrawPushConstants),
+                                       &push_constants);
+
+            ctx.dcb.bind_index_buffer(mesh.mesh->get_indices(), mesh.mesh->get_index_type());
+            for (const auto& primitive : mesh.mesh->get_primitives()) ctx.dcb.draw(primitive.count, 1, primitive.first, 0, 0);
+        });
 
     ctx.dcb.end_rendering();
 

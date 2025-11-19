@@ -44,21 +44,6 @@ public:
 
     [[nodiscard]] const VkDescriptorSetLayout& get_set_layout(uint32_t set_index) const { return m_set_layouts[set_index]; }
 
-    [[nodiscard]] static VkShaderStageFlags get_shader_stage_flags(const ShaderStage stage)
-    {
-        switch (stage)
-        {
-            case ShaderStage::Compute:
-                return VK_SHADER_STAGE_COMPUTE_BIT;
-            case ShaderStage::Vertex:
-                return VK_SHADER_STAGE_VERTEX_BIT;
-            case ShaderStage::Fragment:
-                return VK_SHADER_STAGE_FRAGMENT_BIT;
-            default:
-                KX_ASSERT(false);
-        }
-    }
-
     [[nodiscard]] VkPipelineBindPoint bind_point() const
     {
         switch (m_type)
@@ -75,7 +60,7 @@ public:
 
 class ComputePipelineBuilder
 {
-    std::shared_ptr<Shader> m_compute_shader;
+    std::shared_ptr<Shader> m_shader;
     VkPipelineCreateFlags m_flags{0};
 
 public:
@@ -87,8 +72,7 @@ public:
 
 class GraphicsPipelineBuilder
 {
-    std::shared_ptr<Shader> m_vertex_shader;
-    std::shared_ptr<Shader> m_fragment_shader;
+    std::shared_ptr<Shader> m_shader;
     VkPipelineCreateFlags m_flags{0};
 
     VkPipelineInputAssemblyStateCreateInfo m_input_assembly{.sType =
@@ -102,7 +86,7 @@ class GraphicsPipelineBuilder
     VkFormat m_color_attachment_format{};
 
 public:
-    GraphicsPipelineBuilder& set_shader(const std::shared_ptr<Shader>& vert, const std::shared_ptr<Shader>& frag);
+    GraphicsPipelineBuilder& set_shader(const std::shared_ptr<Shader>& shader);
     GraphicsPipelineBuilder& set_input_topology(VkPrimitiveTopology topology);
     GraphicsPipelineBuilder& set_polygon_mode(VkPolygonMode mode);
     GraphicsPipelineBuilder& set_cull_mode(VkCullModeFlags cullMode, VkFrontFace frontFace);

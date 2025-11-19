@@ -89,7 +89,7 @@ Pipeline& Pipeline::operator=(Pipeline&& other) noexcept
 
 ComputePipelineBuilder& ComputePipelineBuilder::set_shader(const std::shared_ptr<Shader>& shader)
 {
-    m_compute_shader = shader;
+    m_shader = shader;
     return *this;
 }
 
@@ -103,11 +103,10 @@ Pipeline ComputePipelineBuilder::build(VkDevice device) const
 {
     VkComputePipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipeline_info.stage =
-        vk_init::pipeline_shader_stage_create_info(VK_SHADER_STAGE_COMPUTE_BIT, m_compute_shader->get_module(), "main");
+    pipeline_info.stage = m_shader->get_stages()[0];
     pipeline_info.flags = m_flags;
 
-    auto& bindings_by_set = m_compute_shader->get_bindings();
+    const auto& bindings_by_set = m_shader->get_bindings();
 
     std::vector<VkDescriptorSetLayout> set_layouts;
     set_layouts.resize(bindings_by_set.empty() ? 0 : bindings_by_set.rbegin()->first + 1, VK_NULL_HANDLE);
@@ -121,14 +120,12 @@ Pipeline ComputePipelineBuilder::build(VkDevice device) const
         VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &set_layouts[set_index]));
     }
 
-    return Pipeline(device, set_layouts, m_compute_shader->get_push_constant_ranges(), pipeline_info);
+    return Pipeline(device, set_layouts, m_shader->get_push_constant_ranges(), pipeline_info);
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::set_shader(const std::shared_ptr<Shader>& vert,
-                                                             const std::shared_ptr<Shader>& frag)
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::set_shader(const std::shared_ptr<Shader>& shader)
 {
-    m_vertex_shader = vert;
-    m_fragment_shader = frag;
+    m_shader = shader;
     return *this;
 }
 
@@ -245,12 +242,10 @@ Pipeline GraphicsPipelineBuilder::build(VkDevice device) const
     VkGraphicsPipelineCreateInfo pipeline_info = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipeline_info.pNext = &m_render_info;
 
-    const VkPipelineShaderStageCreateInfo stages[2] = {
-        vk_init::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, m_vertex_shader->get_module(), "main"),
-        vk_init::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragment_shader->get_module(), "main")};
+    const auto& stages = m_shader->get_stages();
 
-    pipeline_info.stageCount = 2;
-    pipeline_info.pStages = &stages[0];
+    pipeline_info.stageCount = static_cast<uint32_t>(stages.size());
+    pipeline_info.pStages = stages.data();
     pipeline_info.pVertexInputState = &vertex_input_info;
     pipeline_info.pInputAssemblyState = &m_input_assembly;
     pipeline_info.pViewportState = &viewport_state;
@@ -267,84 +262,19 @@ Pipeline GraphicsPipelineBuilder::build(VkDevice device) const
 
     pipeline_info.pDynamicState = &dynamic_info;
 
-    auto& vert_bindings = m_vertex_shader->get_bindings();
-    auto& frag_bindings = m_fragment_shader->get_bindings();
+    const auto& bindings_by_set = m_shader->get_bindings();
 
-    uint32_t max_set = 0;
-    if (!vert_bindings.empty()) max_set = std::max(max_set, vert_bindings.rbegin()->first);
-    if (!frag_bindings.empty()) max_set = std::max(max_set, frag_bindings.rbegin()->first);
+    std::vector<VkDescriptorSetLayout> set_layouts;
+    set_layouts.resize(bindings_by_set.empty() ? 0 : bindings_by_set.rbegin()->first + 1, VK_NULL_HANDLE);
 
-    std::vector<VkDescriptorSetLayout> set_layouts(max_set + 1, VK_NULL_HANDLE);
-    std::vector<std::vector<VkDescriptorSetLayoutBinding>> merged_bindings(max_set + 1);
-
-    for (const auto& [set_index, bindings] : vert_bindings)
-        for (const auto& binding : bindings) merged_bindings[set_index].push_back(binding);
-
-    for (const auto& [set_index, bindings] : frag_bindings)
+    for (const auto& [set_index, bindings] : bindings_by_set)
     {
-        for (const auto& binding : bindings)
-        {
-            bool found = false;
-            for (auto& existing : merged_bindings[set_index])
-            {
-                if (existing.binding == binding.binding)
-                {
-                    KX_ASSERT_MSG(existing.descriptorType == binding.descriptorType,
-                                  "Incompatible descriptor types for binding {} in set {}",
-                                  binding.binding,
-                                  set_index);
-                    KX_ASSERT_MSG(existing.descriptorCount == binding.descriptorCount,
-                                  "Incompatible descriptor counts for binding {} in set {}",
-                                  binding.binding,
-                                  set_index);
-                    existing.stageFlags |= binding.stageFlags;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) merged_bindings[set_index].push_back(binding);
-        }
+        VkDescriptorSetLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+        layout_info.pBindings = bindings.data();
+        VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &set_layouts[set_index]));
     }
 
-    for (uint32_t i = 0; i <= max_set; ++i)
-    {
-        if (!merged_bindings[i].empty())
-        {
-            VkDescriptorSetLayoutCreateInfo layout_info{};
-            layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layout_info.bindingCount = static_cast<uint32_t>(merged_bindings[i].size());
-            layout_info.pBindings = merged_bindings[i].data();
-            VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &set_layouts[i]));
-        }
-    }
-
-    std::vector<VkPushConstantRange> push_constants;
-    const auto& vert_push = m_vertex_shader->get_push_constant_ranges();
-    const auto& frag_push = m_fragment_shader->get_push_constant_ranges();
-
-    push_constants = vert_push;
-
-    for (const auto& frag_range : frag_push)
-    {
-        bool merged = false;
-        for (auto& existing : push_constants)
-        {
-            uint32_t existing_end = existing.offset + existing.size;
-            uint32_t frag_end = frag_range.offset + frag_range.size;
-
-            if ((frag_range.offset <= existing_end && frag_end >= existing.offset))
-            {
-                uint32_t new_offset = std::min(existing.offset, frag_range.offset);
-                uint32_t new_end = std::max(existing_end, frag_end);
-                existing.offset = new_offset;
-                existing.size = new_end - new_offset;
-                existing.stageFlags |= frag_range.stageFlags;
-                merged = true;
-                break;
-            }
-        }
-        if (!merged) push_constants.push_back(frag_range);
-    }
-
-    return Pipeline(device, set_layouts, push_constants, pipeline_info);
+    return Pipeline(device, set_layouts, m_shader->get_push_constant_ranges(), pipeline_info);
 }

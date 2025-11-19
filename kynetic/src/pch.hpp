@@ -16,10 +16,12 @@
 #include <filesystem>
 #include <map>
 
+#include "flecs.h"
 #include "fmt/core.h"
 
 #include "glm/mat4x4.hpp"
 #include "glm/vec4.hpp"
+#include "glm/gtc/quaternion.hpp"
 #include "glm/gtx/transform.hpp"
 
 #include "fastgltf/core.hpp"
@@ -164,13 +166,6 @@ struct Resource
     virtual ~Resource() = default;
 };
 
-enum class ShaderStage
-{
-    Compute,
-    Vertex,
-    Fragment
-};
-
 }  // namespace kynetic
 
 namespace vk_init
@@ -235,4 +230,7 @@ void generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize);
 VkDescriptorType slang_to_vk_descriptor_type(slang::BindingType type);
 
 VkShaderStageFlags slang_to_vk_stage(SlangStage stage);
+VkShaderStageFlagBits slang_to_vk_stage_bit(const SlangStage stage);
 }  // namespace vk_util
+
+glm::mat4 make_transform_matrix(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale);

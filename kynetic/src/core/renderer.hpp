@@ -19,12 +19,14 @@ class Renderer
 
     std::shared_ptr<class Shader> m_gradient;
 
+    std::shared_ptr<Shader> m_lit_shader;
+
     std::shared_ptr<Shader> m_triangle_frag;
     std::shared_ptr<Shader> m_triangle_vert;
 
-    std::unique_ptr<Pipeline> m_mesh_pipeline;
+    std::unique_ptr<Pipeline> m_lit_pipeline;
 
-    std::shared_ptr<class Model> m_quad;
+    std::shared_ptr<class Model> m_model;
 
     float m_render_scale{1.f};
     VkExtent2D m_last_device_extent;
@@ -42,6 +44,7 @@ class Renderer
 
     void init_render_target();
     void destroy_render_target() const;
+    void update();
 
 public:
     Renderer();

@@ -141,8 +141,8 @@ Device::Device()
     init_info.Device = m_device;
     init_info.Queue = m_graphics_queue;
     init_info.DescriptorPool = imgui_descriptor_pool;
-    init_info.MinImageCount = 3;
-    init_info.ImageCount = 3;
+    init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
+    init_info.ImageCount = MAX_FRAMES_IN_FLIGHT;
     init_info.UseDynamicRendering = true;
 
     // dynamic rendering parameters for imgui to use

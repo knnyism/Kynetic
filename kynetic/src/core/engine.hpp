@@ -10,6 +10,7 @@ class Engine
 {
     std::unique_ptr<class Device> m_device;
     std::unique_ptr<class ResourceManager> m_resource_manager;
+    std::unique_ptr<class Scene> m_scene;
     std::unique_ptr<class Renderer> m_renderer;
 
     bool is_shutting_down{false};
@@ -27,6 +28,7 @@ public:
 
     [[nodiscard]] ResourceManager& resources() const { return *m_resource_manager; }
     [[nodiscard]] Device& device() const { return *m_device; }
+    [[nodiscard]] Scene& scene() const { return *m_scene; }
 
     void init();
     void shutdown();

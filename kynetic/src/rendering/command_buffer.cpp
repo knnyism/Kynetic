@@ -144,14 +144,9 @@ void CommandBuffer::bind_pipeline(Pipeline* pipeline)
     vkCmdBindPipeline(m_command_buffer, m_current_pipeline->bind_point(), m_current_pipeline->get());
 }
 
-void CommandBuffer::set_push_constants(ShaderStage stage, uint32_t size, const void* data, uint32_t offset) const
+void CommandBuffer::set_push_constants(VkShaderStageFlags stage_flags, uint32_t size, const void* data, uint32_t offset) const
 {
-    vkCmdPushConstants(m_command_buffer,
-                       m_current_pipeline->get_layout(),
-                       m_current_pipeline->get_shader_stage_flags(stage),
-                       offset,
-                       size,
-                       data);
+    vkCmdPushConstants(m_command_buffer, m_current_pipeline->get_layout(), stage_flags, offset, size, data);
 }
 
 void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
@@ -164,6 +159,14 @@ void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
                             &descriptor_set,
                             0,
                             nullptr);
+}
+
+void CommandBuffer::bind_vertex_buffer(uint32_t firstBinding,
+                                       uint32_t bindingCount,
+                                       VkBuffer vertex_buffer,
+                                       VkDeviceSize offset) const
+{
+    vkCmdBindVertexBuffers(m_command_buffer, firstBinding, bindingCount, &vertex_buffer, &offset);
 }
 
 void CommandBuffer::bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset) const

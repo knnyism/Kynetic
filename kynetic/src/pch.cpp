@@ -264,3 +264,44 @@ VkShaderStageFlags vk_util::slang_to_vk_stage(const SlangStage stage)
             return VK_SHADER_STAGE_ALL;
     }
 }
+
+VkShaderStageFlagBits vk_util::slang_to_vk_stage_bit(const SlangStage stage)
+{
+    switch (stage)
+    {
+        case SLANG_STAGE_VERTEX:
+            return VK_SHADER_STAGE_VERTEX_BIT;
+        case SLANG_STAGE_FRAGMENT:
+            return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case SLANG_STAGE_COMPUTE:
+            return VK_SHADER_STAGE_COMPUTE_BIT;
+        case SLANG_STAGE_GEOMETRY:
+            return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case SLANG_STAGE_RAY_GENERATION:
+            return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        case SLANG_STAGE_INTERSECTION:
+            return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+        case SLANG_STAGE_ANY_HIT:
+            return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        case SLANG_STAGE_CLOSEST_HIT:
+            return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        case SLANG_STAGE_MISS:
+            return VK_SHADER_STAGE_MISS_BIT_KHR;
+        case SLANG_STAGE_CALLABLE:
+            return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+        case SLANG_STAGE_MESH:
+            return VK_SHADER_STAGE_MESH_BIT_EXT;
+        case SLANG_STAGE_AMPLIFICATION:
+            return VK_SHADER_STAGE_TASK_BIT_EXT;
+        default:
+            KX_ASSERT_MSG(false, "Unknown Slang shader stage");
+    }
+}
+
+glm::mat4 make_transform_matrix(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale)
+{
+    glm::mat4 t = glm::translate(glm::mat4(1.0f), position);
+    glm::mat4 r = glm::mat4_cast(rotation);
+    glm::mat4 s = glm::scale(glm::mat4(1.0f), scale);
+    return t * r * s;
+}
