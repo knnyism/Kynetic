@@ -9,11 +9,14 @@ namespace kynetic
 class Engine
 {
     std::unique_ptr<class Device> m_device;
+    std::unique_ptr<class Input> m_input;
     std::unique_ptr<class ResourceManager> m_resource_manager;
     std::unique_ptr<class Scene> m_scene;
     std::unique_ptr<class Renderer> m_renderer;
 
     bool is_shutting_down{false};
+
+    std::function<void(float)> m_update_callback;
 
 public:
     Engine();
@@ -26,13 +29,16 @@ public:
 
     [[nodiscard]] static Engine& get();
 
-    [[nodiscard]] ResourceManager& resources() const { return *m_resource_manager; }
     [[nodiscard]] Device& device() const { return *m_device; }
+    [[nodiscard]] Input& input() const { return *m_input; }
+    [[nodiscard]] ResourceManager& resources() const { return *m_resource_manager; }
     [[nodiscard]] Scene& scene() const { return *m_scene; }
 
     void init();
     void shutdown();
 
     void update();
+
+    void set_update_callback(const std::function<void(float)>& callback);
 };
 }  // namespace kynetic

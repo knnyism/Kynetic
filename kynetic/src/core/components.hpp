@@ -14,12 +14,25 @@ struct MeshComponent
 
 struct TransformComponent
 {
-    glm::vec3 translation;  // Local space
-    glm::quat rotation;     // Local space
-    glm::vec3 scale;        // Local space
+    glm::vec3 translation{0.f};                      // Local space
+    glm::quat rotation{glm::identity<glm::quat>()};  // Local space
+    glm::vec3 scale{1.f};                            // Local space
 
     glm::mat4 transform{1.f};  // Global space
 
     bool is_dirty{true};
 };
+
+struct MainCameraTag
+{
+};
+
+struct CameraComponent
+{
+    float aspect;
+    float near_plane;
+    float far_plane;
+    float fovy;
+};
+
 }  // namespace kynetic

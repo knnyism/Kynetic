@@ -4,7 +4,7 @@
 
 #include "device.hpp"
 #include "engine.hpp"
-#include "../rendering/scene.hpp"
+#include "scene.hpp"
 #include "resource_manager.hpp"
 
 #include "renderer.hpp"
@@ -29,17 +29,17 @@ Renderer::Renderer()
 
     m_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/lit.slang");
 
-    GraphicsPipelineBuilder general_pipeline = GraphicsPipelineBuilder()
-                                                   .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                   .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                   .set_color_attachment_format(m_render_target.format)
-                                                   .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-                                                   .set_depth_format(m_depth_render_target.format)
-                                                   .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
-                                                   .set_multisampling_none()
-                                                   .disable_blending();
-
-    m_lit_pipeline = std::make_unique<Pipeline>(general_pipeline.set_shader(m_lit_shader).build(device.get()));
+    m_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                                    .set_shader(m_lit_shader)
+                                                    .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                                    .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                                    .set_color_attachment_format(m_render_target.format)
+                                                    .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                                                    .set_depth_format(m_depth_render_target.format)
+                                                    .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                                                    .set_multisampling_none()
+                                                    .disable_blending()
+                                                    .build(device.get()));
 
     Effect& gradient = backgroundEffects.emplace_back(
         "gradient",
@@ -52,12 +52,7 @@ Renderer::Renderer()
         std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_gradient).build(device.get())));
     sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
 
-    m_model = Engine::get().resources().load<Model>("assets/shared_assets/models/sponza/sponza.gltf");
     m_texture = Engine::get().resources().find<Texture>("dev/missing");
-
-    Engine::get().scene().add_model(m_model);
-
-    Engine::get().resources().refresh_mesh_buffers();
 }
 
 Renderer::~Renderer()
@@ -166,12 +161,8 @@ void Renderer::render()
     ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
     ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-    glm::mat4 view = glm::lookAt(glm::vec3{25, 25, 25}, glm::vec3{0, 10.f, 0}, glm::vec3{0, 1, 0});
-    glm::mat4 projection = glm::perspective(glm::radians(70.f),
-                                            static_cast<float>(draw_extent.width) / static_cast<float>(draw_extent.height),
-                                            1000.f,
-                                            0.1f);
-    projection[1][1] *= -1;
+    glm::mat4 view = scene.get_view();
+    glm::mat4 projection = scene.get_projection();
 
     ctx.dcb.bind_pipeline(m_lit_pipeline.get());
     {
@@ -217,7 +208,7 @@ void Renderer::render()
     {
         case RenderingMethod::CpuDriven:
         {
-            for (auto& draw : scene.get_draw_commands())
+            for (const auto& draw : scene.get_draw_commands())
                 ctx.dcb.draw(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset, draw.firstInstance);
         }
         break;

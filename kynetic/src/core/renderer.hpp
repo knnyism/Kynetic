@@ -34,7 +34,6 @@ class Renderer
 
     std::unique_ptr<Pipeline> m_lit_pipeline;
 
-    std::shared_ptr<class Model> m_model;
     std::shared_ptr<class Texture> m_texture;
 
     float m_render_scale{1.f};

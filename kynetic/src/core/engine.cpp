@@ -3,8 +3,9 @@
 //
 
 #include "device.hpp"
+#include "input.hpp"
 #include "resource_manager.hpp"
-#include "../rendering/scene.hpp"
+#include "scene.hpp"
 #include "renderer.hpp"
 
 #include "engine.hpp"
@@ -19,6 +20,7 @@ Engine::Engine()
     engine = this;
 
     m_device = std::make_unique<Device>();
+    m_input = std::make_unique<Input>();
     m_resource_manager = std::make_unique<ResourceManager>();
     m_scene = std::make_unique<Scene>();
     m_renderer = std::make_unique<Renderer>();
@@ -40,19 +42,32 @@ void Engine::shutdown()
 
 void Engine::update()
 {
+    auto time = std::chrono::high_resolution_clock::now();
+
     while (m_device->is_running())
     {
-        m_device->update();
-        m_scene->update();
+        auto ctime = std::chrono::high_resolution_clock::now();
+        auto elapsed = ctime - time;
+        const float delta_time = static_cast<float>(
+            static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()) / 1000000.0);
 
+        m_device->update();
+        m_update_callback(delta_time);
+        m_input->update();
+
+        m_scene->update();
         if (m_device->is_minimized())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
+        }
+        else if (m_device->begin_frame())
+        {
+            m_renderer->render();
+            m_device->end_frame();
         }
 
-        if (!m_device->begin_frame()) continue;
-        m_renderer->render();
-        m_device->end_frame();
+        time = ctime;
     }
 }
+
+void Engine::set_update_callback(const std::function<void(float)>& callback) { m_update_callback = callback; }

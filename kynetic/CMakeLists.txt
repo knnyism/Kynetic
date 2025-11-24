@@ -219,9 +219,11 @@ add_library(kynetic STATIC
         src/vma_usage.cpp
         src/vma_usage.hpp
         src/core/components.hpp
-        src/rendering/scene.cpp
-        src/rendering/scene.hpp
+        src/core/scene.cpp
+        src/core/scene.hpp
         src/magic_enum.hpp
+        src/core/input.cpp
+        src/core/input.hpp
 )
 
 target_link_libraries(kynetic PUBLIC

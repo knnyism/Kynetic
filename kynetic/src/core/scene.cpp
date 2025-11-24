@@ -15,6 +15,8 @@ using namespace kynetic;
 
 Scene::Scene()
 {
+    m_root = m_scene.entity().add<TransformComponent>();
+
     m_scene.observer<TransformComponent>("TransformDirty")
         .event(flecs::OnSet)
         .each([](TransformComponent& transform) { transform.is_dirty = true; });
@@ -52,12 +54,21 @@ void Scene::update()
             }
         });
 
-    const auto query = m_scene.query_builder<TransformComponent, MeshComponent>().build();
+    const Device& device = Engine::get().device();
+    const float aspect = static_cast<float>(device.get_extent().width) / static_cast<float>(device.get_extent().height);
 
-    if (update_instance_data_buffer(query)) update_indirect_commmand_buffer();
+    m_scene.query_builder<CameraComponent, TransformComponent, MainCameraTag>().build().each(
+        [&](const CameraComponent& camera, const TransformComponent& transform, const MainCameraTag&)
+        {
+            m_view = glm::inverse(transform.transform);
+            m_projection = glm::perspective(camera.fovy, aspect * camera.aspect, camera.far_plane, camera.near_plane);
+            m_projection[1][1] *= -1;
+        });
+
+    if (update_instance_data_buffer()) update_indirect_commmand_buffer();
 }
 
-bool Scene::update_instance_data_buffer(const flecs::query<TransformComponent, MeshComponent>& query)
+bool Scene::update_instance_data_buffer()
 {
     Device& device = Engine::get().device();
 
@@ -69,7 +80,8 @@ bool Scene::update_instance_data_buffer(const flecs::query<TransformComponent, M
     std::unordered_map<Mesh*, std::vector<CpuInstanceData>> instances_by_mesh;
 
     uint32_t instance_count = 0;
-    query.each(
+
+    m_scene.query_builder<TransformComponent, MeshComponent>().build().each(
         [&](const TransformComponent& transform, const MeshComponent& mesh_component)
         {
             for (const auto& mesh : mesh_component.meshes)
@@ -184,9 +196,22 @@ void Scene::update_indirect_commmand_buffer()
     device.destroy_buffer(staging);
 }
 
+flecs::entity Scene::add_camera(bool is_main_camera) const
+{
+    const flecs::entity camera_entity =
+        m_scene.entity()
+            .add<TransformComponent>()
+            .set<CameraComponent>({.aspect = 1.f, .near_plane = 0.1f, .far_plane = 1000.f, .fovy = 70.f})
+            .child_of(m_root);
+
+    if (is_main_camera) camera_entity.add<MainCameraTag>();
+
+    return camera_entity;
+}
+
 flecs::entity Scene::add_model(const std::shared_ptr<Model>& model) const
 {
-    const flecs::entity root_entity = m_scene.entity();
+    const flecs::entity root_entity = m_scene.entity().child_of(m_root);
 
     std::function<void(const Model::Node&, flecs::entity)> traverse_nodes =
         [&](const Model::Node& node, const flecs::entity parent)

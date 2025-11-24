@@ -8,6 +8,8 @@
 
 #include "core/device.hpp"
 
+#include "engine.hpp"
+#include "input.hpp"
 #include "rendering/swapchain.hpp"
 
 KX_DISABLE_WARNING_PUSH
@@ -194,10 +196,6 @@ Device::~Device()
 
 bool Device::begin_frame()
 {
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
-
     auto& ctx = get_context();
     uint32_t frame_index = m_frame_count % static_cast<uint32_t>(m_syncs.size());
 
@@ -298,6 +296,13 @@ void Device::update()
     {
         switch (event.type)
         {
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP:
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            case SDL_EVENT_MOUSE_MOTION:
+                Engine::get().input().handle_event(event);
+                break;
             case SDL_EVENT_QUIT:
                 m_is_running = false;
                 break;
@@ -318,6 +323,10 @@ void Device::update()
     }
 
     if (m_resize_requested) resize_swapchain();
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
 }
 
 bool Device::is_minimized() const { return m_is_minimized; }

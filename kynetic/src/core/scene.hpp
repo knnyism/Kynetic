@@ -13,6 +13,7 @@ class Scene
     friend class Renderer;
 
     flecs::world m_scene;
+    flecs::entity m_root;
 
     uint32_t m_instance_count{0};
 
@@ -23,7 +24,10 @@ class Scene
 
     VkDeviceAddress m_instance_data_buffer_address{0};
 
-    bool update_instance_data_buffer(const flecs::query<struct TransformComponent, struct MeshComponent>& query);
+    glm::mat4 m_projection{1.f};
+    glm::mat4 m_view{1.f};
+
+    bool update_instance_data_buffer();
     void update_indirect_commmand_buffer();
     void update();
 
@@ -31,12 +35,16 @@ public:
     Scene();
     ~Scene();
 
+    flecs::entity add_camera(bool is_main_camera) const;
     flecs::entity add_model(const std::shared_ptr<class Model>& model) const;
     flecs::world& get() { return m_scene; }
 
     [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draw_commands() const { return m_draw_commands; }
     [[nodiscard]] VkDeviceAddress get_instance_data() const { return m_instance_data_buffer_address; }
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draw_commands.size()); }
+
+    [[nodiscard]] glm::mat4 get_projection() const { return m_projection; }
+    [[nodiscard]] glm::mat4 get_view() const { return m_view; }
 };
 
 }  // namespace kynetic

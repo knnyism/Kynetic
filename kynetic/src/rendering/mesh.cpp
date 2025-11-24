@@ -47,14 +47,14 @@ Mesh::Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::
     device.immediate_submit(
         [&](const CommandBuffer& cmd)
         {
-            VkBufferCopy vertex_copy{0};
+            VkBufferCopy vertex_copy{};
             vertex_copy.dstOffset = 0;
             vertex_copy.srcOffset = 0;
             vertex_copy.size = vertex_buffer_size;
 
             cmd.copy_buffer(staging.buffer, m_vertex_buffer.buffer, 1, &vertex_copy);
 
-            VkBufferCopy index_copy{0};
+            VkBufferCopy index_copy{};
             index_copy.dstOffset = 0;
             index_copy.srcOffset = vertex_buffer_size;
             index_copy.size = index_buffer_size;

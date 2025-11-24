@@ -88,6 +88,8 @@ public:
     Device& operator=(Device&&) = delete;
 
     [[nodiscard]] const VkDevice& get() const { return m_device; }
+
+    [[nodiscard]] SDL_Window& get_window() const { return *m_window; }
     [[nodiscard]] VkExtent2D get_extent() const { return m_window_extent; }
 
     [[nodiscard]] Context& get_context() { return m_ctxs[m_frame_count % MAX_FRAMES_IN_FLIGHT]; }

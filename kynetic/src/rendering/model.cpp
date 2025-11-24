@@ -24,7 +24,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
 
-    std::function<void(const size_t, Node&)> traverse_node = [&](const size_t node_index, Node& parent_node)
+    std::function<void(size_t, Node&)> traverse_node = [&](const size_t node_index, Node& parent_node)
     {
         auto& asset_node = asset.nodes[node_index];
         Node& node = parent_node.children.emplace_back();
@@ -82,7 +82,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 }
 
                 // load vertex normals
-                auto normals = p.findAttribute("NORMAL");
+                auto* normals = p.findAttribute("NORMAL");
                 if (normals != p.attributes.end())
                 {
                     fastgltf::iterateAccessorWithIndex<glm::vec3>(asset,
@@ -92,7 +92,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 }
 
                 // load UVs
-                auto uv = p.findAttribute("TEXCOORD_0");
+                auto* uv = p.findAttribute("TEXCOORD_0");
                 if (uv != p.attributes.end())
                 {
                     fastgltf::iterateAccessorWithIndex<glm::vec2>(asset,
@@ -105,7 +105,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 }
 
                 // load vertex colors
-                auto colors = p.findAttribute("COLOR_0");
+                auto* colors = p.findAttribute("COLOR_0");
                 if (colors != p.attributes.end())
                 {
                     fastgltf::iterateAccessorWithIndex<glm::vec4>(asset,
