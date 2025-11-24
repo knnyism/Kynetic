@@ -1,0 +1,210 @@
+//
+// Created by kenny on 11/19/25.
+//
+
+#include "core/engine.hpp"
+#include "core/device.hpp"
+
+#include "core/components.hpp"
+#include "rendering/mesh.hpp"
+#include "rendering/model.hpp"
+
+#include "scene.hpp"
+
+using namespace kynetic;
+
+Scene::Scene()
+{
+    m_scene.observer<TransformComponent>("TransformDirty")
+        .event(flecs::OnSet)
+        .each([](TransformComponent& transform) { transform.is_dirty = true; });
+}
+
+Scene::~Scene()
+{
+    const Device& device = Engine::get().device();
+
+    device.destroy_buffer(m_instance_data_buffer);
+    device.destroy_buffer(m_indirect_command_buffer);
+}
+
+void Scene::update()
+{
+    m_scene.query_builder<TransformComponent>().each(
+        [](const flecs::entity entity, const TransformComponent& transform)
+        {
+            if (transform.is_dirty)
+                entity.children<TransformComponent>(
+                    [](const flecs::entity child)
+                    {
+                        if (auto* child_transform = child.try_get_mut<TransformComponent>()) child_transform->is_dirty = true;
+                    });
+        });
+
+    m_scene.query_builder<TransformComponent, TransformComponent>().term_at(1).parent().cascade().build().each(
+        [](TransformComponent& transform, const TransformComponent& transform_parent)
+        {
+            if (transform.is_dirty)
+            {
+                transform.is_dirty = false;
+                transform.transform = transform_parent.transform *
+                                      make_transform_matrix(transform.translation, transform.rotation, transform.scale);
+            }
+        });
+
+    const auto query = m_scene.query_builder<TransformComponent, MeshComponent>().build();
+
+    if (update_instance_data_buffer(query)) update_indirect_commmand_buffer();
+}
+
+bool Scene::update_instance_data_buffer(const flecs::query<TransformComponent, MeshComponent>& query)
+{
+    Device& device = Engine::get().device();
+
+    struct CpuInstanceData
+    {
+        glm::mat4 model;
+    };
+
+    std::unordered_map<Mesh*, std::vector<CpuInstanceData>> instances_by_mesh;
+
+    uint32_t instance_count = 0;
+    query.each(
+        [&](const TransformComponent& transform, const MeshComponent& mesh_component)
+        {
+            for (const auto& mesh : mesh_component.meshes)
+            {
+                instances_by_mesh[mesh.get()].push_back({glm::transpose(transform.transform)});
+                instance_count++;
+            }
+        });
+
+    std::vector<CpuInstanceData> instances{instance_count};
+    size_t instance_data_size = instance_count * sizeof(InstanceData);
+
+    const bool should_rebuild_draw_commands = m_instance_count != instance_count;
+    m_instance_count = instance_count;
+
+    uint32_t instance_index = 0;
+    if (should_rebuild_draw_commands)
+    {
+        m_draw_commands.clear();
+        for (auto [mesh, instance_data] : instances_by_mesh)
+        {
+            VkDrawIndexedIndirectCommand& batch = m_draw_commands.emplace_back();
+            batch.firstIndex = mesh->get_index_offset();
+            batch.indexCount = mesh->get_index_count();
+            batch.firstInstance = instance_index;
+            batch.instanceCount = static_cast<uint32_t>(instance_data.size());
+            batch.vertexOffset = static_cast<int32_t>(mesh->get_vertex_offset());
+
+            for (auto& data : instance_data)
+            {
+                instances[instance_index].model = data.model;
+                instance_index++;
+            }
+        }
+    }
+    else
+    {
+        for (auto [mesh, instance_data] : instances_by_mesh)
+        {
+            for (auto& data : instance_data)
+            {
+                instances[instance_index].model = data.model;
+                instance_index++;
+            }
+        }
+    }
+
+    if (m_instance_data_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_instance_data_buffer);
+    m_instance_data_buffer =
+        device.create_buffer(instance_data_size,
+                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                             VMA_MEMORY_USAGE_GPU_ONLY);
+
+    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                        .buffer = m_instance_data_buffer.buffer};
+    m_instance_data_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+
+    const AllocatedBuffer staging =
+        device.create_buffer(instance_data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data;
+    vmaMapMemory(device.get_allocator(), staging.allocation, &data);
+    memcpy(data, instances.data(), instance_data_size);
+    vmaUnmapMemory(device.get_allocator(), staging.allocation);
+
+    device.immediate_submit(
+        [&](const CommandBuffer& cmd)
+        {
+            VkBufferCopy copy{};
+            copy.dstOffset = 0;
+            copy.srcOffset = 0;
+            copy.size = instance_data_size;
+
+            cmd.copy_buffer(staging.buffer, m_instance_data_buffer.buffer, 1, &copy);
+        });
+
+    device.destroy_buffer(staging);
+
+    return should_rebuild_draw_commands;
+}
+
+void Scene::update_indirect_commmand_buffer()
+{
+    Device& device = Engine::get().device();
+
+    size_t indirect_buffer_size = sizeof(VkDrawIndexedIndirectCommand) * m_draw_commands.size();
+
+    if (m_indirect_command_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_indirect_command_buffer);
+    m_indirect_command_buffer = device.create_buffer(indirect_buffer_size,
+                                                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                                                     VMA_MEMORY_USAGE_GPU_ONLY);
+    AllocatedBuffer staging =
+        device.create_buffer(indirect_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data;
+    vmaMapMemory(device.get_allocator(), staging.allocation, &data);
+    memcpy(data, m_draw_commands.data(), indirect_buffer_size);
+    vmaUnmapMemory(device.get_allocator(), staging.allocation);
+
+    device.immediate_submit(
+        [&](const CommandBuffer& cmd)
+        {
+            VkBufferCopy copy{};
+            copy.dstOffset = 0;
+            copy.srcOffset = 0;
+            copy.size = indirect_buffer_size;
+
+            cmd.copy_buffer(staging.buffer, m_indirect_command_buffer.buffer, 1, &copy);
+        });
+
+    device.destroy_buffer(staging);
+}
+
+flecs::entity Scene::add_model(const std::shared_ptr<Model>& model) const
+{
+    const flecs::entity root_entity = m_scene.entity();
+
+    std::function<void(const Model::Node&, flecs::entity)> traverse_nodes =
+        [&](const Model::Node& node, const flecs::entity parent)
+    {
+        const flecs::entity child_entity = m_scene.entity().child_of(parent).add<TransformComponent>();
+
+        if (!node.meshes.empty())
+        {
+            child_entity.add<MeshComponent>();
+            child_entity.set<MeshComponent>({node.meshes});
+        }
+
+        child_entity.set<TransformComponent>({.translation = node.translation, .rotation = node.rotation, .scale = node.scale});
+
+        for (const auto& child : node.children) traverse_nodes(child, child_entity);
+    };
+
+    traverse_nodes(model->get_root_node(), root_entity);
+
+    return root_entity;
+}

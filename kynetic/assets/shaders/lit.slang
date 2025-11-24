@@ -19,14 +19,17 @@ uniform Sampler2D<float4> display_texture;
 DrawPushConstants constants;
 
 [shader("vertex")]
-VertexStageOutput vertex_main(uint vertex_id : SV_VertexID)
+VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_id : SV_VulkanInstanceID)
 {
     VertexStageOutput output;
 
-    Vertex* vertices = (Vertex*)constants.vertex_buffer;
-    Vertex v = vertices[vertex_id];
+    Vertex* vertices = (Vertex*)(constants.vertices);
+    InstanceData* instances = (InstanceData*)(constants.instance_data);
 
-    float4x4 mvp = mul(scene_data.vp, constants.model);
+    Vertex v = vertices[vertex_id];
+    InstanceData instance = instances[instance_id];
+
+    float4x4 mvp = mul(scene_data.vp, float4x4(instance.model0,instance.model1,instance.model2,instance.model3));
 
     output.coarseVertex.color = v.color.xyz;
     output.coarseVertex.uv = float2(v.uv_x, v.uv_y);

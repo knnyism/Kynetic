@@ -10,14 +10,20 @@ namespace kynetic
 class ResourceManager
 {
     friend class Engine;
+    friend class Renderer;
 
     std::unordered_map<size_t, std::shared_ptr<Resource>> m_resources;
 
     std::vector<std::shared_ptr<class Texture>> m_default_textures;
 
+    AllocatedBuffer m_merged_vertex_buffer;
+    AllocatedBuffer m_merged_index_buffer;
+
+    VkDeviceAddress m_merged_vertex_buffer_address;
+
 public:
     ResourceManager();
-    ~ResourceManager() = default;
+    ~ResourceManager();
 
     ResourceManager(const ResourceManager&) = delete;
     ResourceManager(ResourceManager&&) = delete;
@@ -29,6 +35,17 @@ public:
 
     template <typename T>
     std::shared_ptr<T> find(const std::filesystem::path& path);
+
+    template <typename T, typename Func>
+    void for_each(Func&& func)
+    {
+        for (const auto& resource : m_resources | std::views::values)
+        {
+            if (auto casted = std::dynamic_pointer_cast<T>(resource)) func(casted);
+        }
+    }
+
+    void refresh_mesh_buffers();
 };
 
 template <typename T, typename... Args>

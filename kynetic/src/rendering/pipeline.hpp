@@ -11,6 +11,15 @@ class Shader;
 
 class Pipeline
 {
+    struct BindingInfo
+    {
+        uint32_t set;
+        uint32_t binding;
+        VkDescriptorType type;
+        uint32_t count;
+        std::string name;
+    };
+
     enum class Type
     {
         Compute,

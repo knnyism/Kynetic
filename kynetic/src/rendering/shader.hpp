@@ -9,17 +9,6 @@ namespace kynetic
 
 class Shader : public Resource
 {
-public:
-    struct BindingInfo
-    {
-        uint32_t set;
-        uint32_t binding;
-        VkDescriptorType type;
-        uint32_t count;
-        std::string name;
-    };
-
-private:
     std::filesystem::file_time_type m_last_modified;
 
     std::map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> m_bindings;

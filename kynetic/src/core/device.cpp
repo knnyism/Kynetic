@@ -51,6 +51,8 @@ Device::Device()
     features_11.shaderDrawParameters = true;
 
     VkPhysicalDeviceFeatures features{};
+    features.multiDrawIndirect = true;
+    features.drawIndirectFirstInstance = true;
     features.shaderInt64 = true;
 
     vkb::PhysicalDeviceSelector selector{instance};

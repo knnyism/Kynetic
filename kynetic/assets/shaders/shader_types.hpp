@@ -26,8 +26,8 @@ struct Vertex
 
 struct DrawPushConstants
 {
-    column_major float4x4 model;
-    VkDeviceAddress vertex_buffer;
+    VkDeviceAddress vertices;
+    VkDeviceAddress instance_data;
 };
 
 struct GradientPushConstants
@@ -48,4 +48,12 @@ struct SceneData
     float4 ambient_color;
     float4 sun_direction;
     float4 sun_color;
+};
+
+struct InstanceData
+{
+    float4 model0;
+    float4 model1;
+    float4 model2;
+    float4 model3;
 };

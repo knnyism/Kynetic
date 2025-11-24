@@ -149,7 +149,7 @@ message(STATUS "Detected Slang platform: ${SLANG_PLATFORM}")
 
 FetchContent_Declare(
         slang
-        URL https://github.com/shader-slang/slang/releases/download/v2025.21.1/slang-2025.21.1-${SLANG_PLATFORM}.tar.gz
+        URL https://github.com/shader-slang/slang/releases/download/v2025.22.1/slang-2025.22.1-${SLANG_PLATFORM}.tar.gz
         DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 FetchContent_MakeAvailable(slang)
@@ -219,8 +219,9 @@ add_library(kynetic STATIC
         src/vma_usage.cpp
         src/vma_usage.hpp
         src/core/components.hpp
-        src/core/scene.cpp
-        src/core/scene.hpp
+        src/rendering/scene.cpp
+        src/rendering/scene.hpp
+        src/magic_enum.hpp
 )
 
 target_link_libraries(kynetic PUBLIC

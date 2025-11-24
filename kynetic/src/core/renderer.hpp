@@ -8,6 +8,14 @@ namespace kynetic
 {
 class Renderer
 {
+    enum class RenderingMethod
+    {
+        CpuDriven,
+        GpuDriven,
+
+        GpuDrivenMeshlets
+    };
+
     friend class Engine;
 
     AllocatedImage m_render_target;
@@ -27,8 +35,11 @@ class Renderer
     std::unique_ptr<Pipeline> m_lit_pipeline;
 
     std::shared_ptr<class Model> m_model;
+    std::shared_ptr<class Texture> m_texture;
 
     float m_render_scale{1.f};
+    RenderingMethod m_rendering_method{RenderingMethod::CpuDriven};
+
     VkExtent2D m_last_device_extent;
 
     struct Effect

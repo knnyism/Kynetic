@@ -7,7 +7,6 @@
 
 #include "core/engine.hpp"
 #include "core/resource_manager.hpp"
-#include "glm/gtc/type_ptr.hpp"
 
 using namespace kynetic;
 
@@ -24,21 +23,16 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
 
     std::vector<uint32_t> indices;
     std::vector<Vertex> vertices;
-    std::vector<Primitive> primitives;
 
     std::function<void(const size_t, Node&)> traverse_node = [&](const size_t node_index, Node& parent_node)
     {
-        indices.clear();
-        vertices.clear();
-        primitives.clear();
-
         auto& asset_node = asset.nodes[node_index];
         Node& node = parent_node.children.emplace_back();
         std::visit(fastgltf::visitor{[&](const fastgltf::TRS& trs)
                                      {
-                                         node.translation = glm::make_vec3(&trs.translation[0]);
-                                         node.rotation = glm::make_quat(&trs.rotation[0]);
-                                         node.scale = glm::make_vec3(&trs.scale[0]);
+                                         node.translation = glm::make_vec3(trs.translation.data());
+                                         node.rotation = glm::make_quat(trs.rotation.data());
+                                         node.scale = glm::make_vec3(trs.scale.data());
                                      },
                                      [&](const fastgltf::math::fmat4x4&) { KX_ASSERT(false); }},
                    asset_node.transform);
@@ -49,12 +43,12 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
             auto& mesh = asset.meshes[asset_node.meshIndex.value()];
             auto name = mesh.name;
 
-            for (auto& p : mesh.primitives)
+            for (size_t prim_index = 0; prim_index < mesh.primitives.size(); ++prim_index)
             {
-                Primitive primitive;
+                auto& p = mesh.primitives[prim_index];
 
-                primitive.first = static_cast<uint32_t>(indices.size());
-                primitive.count = static_cast<uint32_t>(asset.accessors[p.indicesAccessor.value()].count);
+                indices.clear();
+                vertices.clear();
 
                 size_t initial_vtx = vertices.size();
 
@@ -120,10 +114,9 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                                                                   { vertices[initial_vtx + index].color = v; });
                 }
 
-                primitives.push_back(primitive);
+                node.meshes.push_back(
+                    Engine::get().resources().load<Mesh>(path / name / std::to_string(prim_index), indices, vertices));
             }
-
-            node.mesh = Engine::get().resources().load<Mesh>(path / name, indices, vertices, primitives);
         }
 
         for (const size_t child_index : asset_node.children) traverse_node(child_index, node);

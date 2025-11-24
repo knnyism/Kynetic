@@ -36,7 +36,7 @@ add_custom_command(
         COMMENT "Copying assets from kynetic to shared_assets"
 )
 
-add_dependencies(game copy_kynetic_assets)
+# add_dependencies(game copy_kynetic_assets)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(game PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)

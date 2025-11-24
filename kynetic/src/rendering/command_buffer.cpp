@@ -161,12 +161,12 @@ void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
                             nullptr);
 }
 
-void CommandBuffer::bind_vertex_buffer(uint32_t firstBinding,
-                                       uint32_t bindingCount,
+void CommandBuffer::bind_vertex_buffer(uint32_t first_binding,
+                                       uint32_t binding_count,
                                        VkBuffer vertex_buffer,
                                        VkDeviceSize offset) const
 {
-    vkCmdBindVertexBuffers(m_command_buffer, firstBinding, bindingCount, &vertex_buffer, &offset);
+    vkCmdBindVertexBuffers(m_command_buffer, first_binding, binding_count, &vertex_buffer, &offset);
 }
 
 void CommandBuffer::bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset) const
@@ -191,4 +191,9 @@ void CommandBuffer::draw(uint32_t index_count,
                          uint32_t first_instance) const
 {
     vkCmdDrawIndexed(m_command_buffer, index_count, instance_count, first_index, vertex_offset, first_instance);
+}
+
+void CommandBuffer::multi_draw_indirect(VkBuffer buffer, uint32_t draw_count, uint32_t stride, VkDeviceSize offset) const
+{
+    vkCmdDrawIndexedIndirect(m_command_buffer, buffer, offset, draw_count, stride);
 }

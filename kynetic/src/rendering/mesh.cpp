@@ -11,30 +11,28 @@
 
 using namespace kynetic;
 
-Mesh::Mesh(const std::filesystem::path& path,
-           std::span<uint32_t> indices,
-           std::span<Vertex> vertices,
-           std::vector<Primitive> primitives)
-    : Resource(Type::Mesh, path.string())
+Mesh::Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::span<Vertex> vertices)
+    : Resource(Type::Mesh, path.string()),
+      m_index_count(static_cast<uint32_t>(indices.size())),
+      m_vertex_count(static_cast<uint32_t>(vertices.size()))
 {
     Device& device = Engine::get().device();
 
     const size_t vertex_buffer_size = vertices.size() * sizeof(Vertex);
     const size_t index_buffer_size = indices.size() * sizeof(uint32_t);
 
-    m_primitives = std::move(primitives);
-
-    m_vertex_buffer = device.create_buffer(
-        vertex_buffer_size,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    m_index_buffer = device.create_buffer(
+        index_buffer_size,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
+    m_vertex_buffer = device.create_buffer(vertex_buffer_size,
+                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                           VMA_MEMORY_USAGE_GPU_ONLY);
 
     VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
                                                   .buffer = m_vertex_buffer.buffer};
     m_vertex_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
-    m_index_buffer = device.create_buffer(index_buffer_size,
-                                          VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                          VMA_MEMORY_USAGE_GPU_ONLY);
 
     AllocatedBuffer staging = device.create_buffer(vertex_buffer_size + index_buffer_size,
                                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,

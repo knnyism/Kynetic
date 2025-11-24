@@ -15,6 +15,7 @@
 #include <thread>
 #include <filesystem>
 #include <map>
+#include <ranges>
 
 #include "flecs.h"
 #include "fmt/core.h"
@@ -22,6 +23,7 @@
 #include "glm/mat4x4.hpp"
 #include "glm/vec4.hpp"
 #include "glm/gtc/quaternion.hpp"
+#include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/transform.hpp"
 
 #include "fastgltf/core.hpp"
@@ -36,6 +38,9 @@
 #include "vulkan/vulkan.h"
 #include "vulkan/vk_enum_string_helper.h"
 #include "vma_usage.hpp"
+
+#include "imgui.h"
+#include "magic_enum.hpp"
 
 #include "shader_types.hpp"
 
@@ -139,7 +144,7 @@ struct AllocatedImage
 
 struct AllocatedBuffer
 {
-    VkBuffer buffer;
+    VkBuffer buffer{VK_NULL_HANDLE};
     VmaAllocation allocation;
     VmaAllocationInfo info;
 };
@@ -234,3 +239,33 @@ VkShaderStageFlagBits slang_to_vk_stage_bit(const SlangStage stage);
 }  // namespace vk_util
 
 glm::mat4 make_transform_matrix(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& scale);
+
+template <typename EnumType>
+static void combo_enum(EnumType& enum_)
+{
+    const std::string type_name = std::string(magic_enum::enum_type_name<EnumType>());
+    auto current_name = magic_enum::enum_name(enum_);
+    const std::string preview = current_name.empty() ? "Unknown" : std::string(current_name);
+
+    // ImGui::PushItemWidth(150.0f);
+    if (ImGui::BeginCombo(type_name.c_str(), preview.c_str()))
+    {
+        constexpr auto enum_values = magic_enum::enum_values<EnumType>();
+        for (const auto& enum_value : enum_values)
+        {
+            auto enum_name = magic_enum::enum_name(enum_value);
+            const bool is_selected = (enum_ == enum_value);
+
+            if (ImGui::Selectable(std::string(enum_name).c_str(), is_selected))
+            {
+                enum_ = enum_value;
+            }
+
+            if (is_selected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+}

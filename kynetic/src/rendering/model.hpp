@@ -18,7 +18,7 @@ public:
         Node* parent{nullptr};
         std::vector<Node> children;
 
-        std::shared_ptr<class Mesh> mesh;
+        std::vector<std::shared_ptr<class Mesh>> meshes;
     };
 
 private:

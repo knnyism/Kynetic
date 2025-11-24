@@ -4,7 +4,7 @@
 
 #include "device.hpp"
 #include "resource_manager.hpp"
-#include "scene.hpp"
+#include "../rendering/scene.hpp"
 #include "renderer.hpp"
 
 #include "engine.hpp"

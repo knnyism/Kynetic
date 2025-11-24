@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/fastgltf-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/flecs-src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/fmt-src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/glm-src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/game/cmake-build-debug/_deps/imgui-src" vcs="Git" />

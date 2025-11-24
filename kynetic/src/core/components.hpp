@@ -9,7 +9,7 @@ namespace kynetic
 
 struct MeshComponent
 {
-    std::shared_ptr<class Mesh> mesh;
+    std::vector<std::shared_ptr<class Mesh>> meshes;
 };
 
 struct TransformComponent
