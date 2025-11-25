@@ -32,7 +32,6 @@ private:
 
     glm::vec2 m_mouse_delta{0.f};
     MouseBehavior m_mouse_behavior{MouseBehavior::Free};
-    bool m_ignore_mouse_motion_this_frame = true;
 
     void handle_event(const SDL_Event& event);
     void update();

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "rendering/command_buffer.hpp"
-#include "rendering/descriptor_allocator.hpp"
+#include "rendering/descriptor.hpp"
 
 struct SDL_Window;
 
@@ -53,6 +53,10 @@ class Device
 
     VmaAllocator m_allocator;
 
+    DescriptorAllocator m_bindless_allocator;
+    VkDescriptorSetLayout m_bindless_layout;
+    VkDescriptorSet m_bindless_set;
+
     Context m_ctxs[MAX_FRAMES_IN_FLIGHT];
     std::vector<Sync> m_syncs;
 
@@ -71,6 +75,7 @@ class Device
     bool m_is_running{true};
     bool m_resize_requested{false};
 
+    void init_bindless();
     void resize_swapchain();
 
     bool begin_frame();
@@ -101,6 +106,9 @@ public:
     [[nodiscard]] const VkImage& get_video_out() const;
 
     [[nodiscard]] VmaAllocator get_allocator() const { return m_allocator; };
+
+    [[nodiscard]] VkDescriptorSetLayout& get_bindless_set_layout() { return m_bindless_layout; }
+    [[nodiscard]] VkDescriptorSet& get_bindless_set() { return m_bindless_set; }
 
     bool is_minimized() const;
     bool is_running() const;

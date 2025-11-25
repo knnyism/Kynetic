@@ -16,12 +16,12 @@ Shader::Shader(const std::filesystem::path& path) : Resource(Type::Shader, path.
     slang::SessionDesc session_desc = {};
     slang::TargetDesc target_desc = {};
     target_desc.format = SLANG_SPIRV;
-    target_desc.profile = device.get_slang_session()->findProfile("spirv_1_5");
+    target_desc.profile = device.get_slang_session()->findProfile("SPV_EXT_descriptor_indexing");
 
     session_desc.targets = &target_desc;
     session_desc.targetCount = 1;
 
-    std::array<slang::CompilerOptionEntry, 1> options = {
+    std::array<slang::CompilerOptionEntry, 2> options = {
         {{
             slang::CompilerOptionName::EmitSpirvDirectly,
             {slang::CompilerOptionValueKind::Int, 1, 0, nullptr, nullptr},
@@ -159,7 +159,9 @@ void Shader::reflect(slang::IComponentType* linked_program)
         SlangInt space = param->getBindingSpace();
         SlangInt binding = param->getBindingIndex();
 
-        if (space >= 0 && binding >= 0)
+        bool is_bindless_binding = space == 1 && binding == 0;
+
+        if (space >= 0 && binding >= 0 && !is_bindless_binding)
         {
             VkDescriptorSetLayoutBinding vk_binding{};
             vk_binding.binding = static_cast<uint32_t>(binding);

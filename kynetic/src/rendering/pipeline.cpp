@@ -5,15 +5,17 @@
 #include "shader.hpp"
 #include "pipeline.hpp"
 
+#include "core/device.hpp"
+
 #include <ranges>
 
 using namespace kynetic;
 
-Pipeline::Pipeline(VkDevice device,
+Pipeline::Pipeline(Device& device,
                    const std::vector<VkDescriptorSetLayout>& set_layouts,
                    const std::vector<VkPushConstantRange>& push_constant_ranges,
                    VkComputePipelineCreateInfo pipeline_info)
-    : m_type(Type::Compute), m_device(device), m_set_layouts(set_layouts)
+    : m_type(Type::Compute), m_device(device.get()), m_set_layouts(set_layouts)
 {
     VkPipelineLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -22,31 +24,35 @@ Pipeline::Pipeline(VkDevice device,
     layout_info.pushConstantRangeCount = static_cast<uint32_t>(push_constant_ranges.size());
     layout_info.pPushConstantRanges = push_constant_ranges.data();
 
-    VK_CHECK(vkCreatePipelineLayout(device, &layout_info, nullptr, &m_layout));
+    VK_CHECK(vkCreatePipelineLayout(device.get(), &layout_info, nullptr, &m_layout));
 
     pipeline_info.layout = m_layout;
 
-    VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline));
+    VK_CHECK(vkCreateComputePipelines(device.get(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline));
 }
 
-Pipeline::Pipeline(VkDevice device,
+Pipeline::Pipeline(Device& device,
                    const std::vector<VkDescriptorSetLayout>& set_layouts,
                    const std::vector<VkPushConstantRange>& push_constant_ranges,
                    VkGraphicsPipelineCreateInfo pipeline_info)
-    : m_type(Type::Graphics), m_device(device), m_set_layouts(set_layouts)
+    : m_type(Type::Graphics), m_device(device.get()), m_set_layouts(set_layouts)
 {
+    auto set_layouts_with_bindless = set_layouts;
+
+    set_layouts_with_bindless.push_back(device.get_bindless_set_layout());
+
     VkPipelineLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layout_info.setLayoutCount = static_cast<uint32_t>(m_set_layouts.size());
-    layout_info.pSetLayouts = m_set_layouts.data();
+    layout_info.setLayoutCount = static_cast<uint32_t>(set_layouts_with_bindless.size());
+    layout_info.pSetLayouts = set_layouts_with_bindless.data();
     layout_info.pushConstantRangeCount = static_cast<uint32_t>(push_constant_ranges.size());
     layout_info.pPushConstantRanges = push_constant_ranges.data();
 
-    VK_CHECK(vkCreatePipelineLayout(device, &layout_info, nullptr, &m_layout));
+    VK_CHECK(vkCreatePipelineLayout(device.get(), &layout_info, nullptr, &m_layout));
 
     pipeline_info.layout = m_layout;
 
-    VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline));
+    VK_CHECK(vkCreateGraphicsPipelines(device.get(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline));
 }
 
 Pipeline::~Pipeline()
@@ -99,7 +105,7 @@ ComputePipelineBuilder& ComputePipelineBuilder::set_flags(const VkPipelineCreate
     return *this;
 }
 
-Pipeline ComputePipelineBuilder::build(VkDevice device) const
+Pipeline ComputePipelineBuilder::build(Device& device) const
 {
     VkComputePipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -117,7 +123,7 @@ Pipeline ComputePipelineBuilder::build(VkDevice device) const
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
         layout_info.pBindings = bindings.data();
-        VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &set_layouts[set_index]));
+        VK_CHECK(vkCreateDescriptorSetLayout(device.get(), &layout_info, nullptr, &set_layouts[set_index]));
     }
 
     return Pipeline(device, set_layouts, m_shader->get_push_constant_ranges(), pipeline_info);
@@ -219,7 +225,7 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::enable_depthtest(bool depth_wr
     return *this;
 }
 
-Pipeline GraphicsPipelineBuilder::build(VkDevice device) const
+Pipeline GraphicsPipelineBuilder::build(Device& device) const
 {
     VkPipelineViewportStateCreateInfo viewport_state = {};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -265,6 +271,7 @@ Pipeline GraphicsPipelineBuilder::build(VkDevice device) const
     const auto& bindings_by_set = m_shader->get_bindings();
 
     std::vector<VkDescriptorSetLayout> set_layouts;
+
     set_layouts.resize(bindings_by_set.empty() ? 0 : bindings_by_set.rbegin()->first + 1, VK_NULL_HANDLE);
 
     for (const auto& [set_index, bindings] : bindings_by_set)
@@ -273,7 +280,7 @@ Pipeline GraphicsPipelineBuilder::build(VkDevice device) const
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
         layout_info.pBindings = bindings.data();
-        VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &set_layouts[set_index]));
+        VK_CHECK(vkCreateDescriptorSetLayout(device.get(), &layout_info, nullptr, &set_layouts[set_index]));
     }
 
     return Pipeline(device, set_layouts, m_shader->get_push_constant_ranges(), pipeline_info);

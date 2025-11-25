@@ -32,7 +32,8 @@ class Scene
     void update();
 
 public:
-    Scene();
+    bool m_paused{false};
+     Scene();
     ~Scene();
 
     flecs::entity add_camera(bool is_main_camera) const;
@@ -40,7 +41,7 @@ public:
     flecs::world& get() { return m_scene; }
 
     [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draw_commands() const { return m_draw_commands; }
-    [[nodiscard]] VkDeviceAddress get_instance_data() const { return m_instance_data_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_instance_data_buffer_address() const { return m_instance_data_buffer_address; }
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draw_commands.size()); }
 
     [[nodiscard]] glm::mat4 get_projection() const { return m_projection; }

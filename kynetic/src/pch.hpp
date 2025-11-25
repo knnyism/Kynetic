@@ -42,6 +42,8 @@
 #include "imgui.h"
 #include "magic_enum.hpp"
 
+#include "stb_image.h"
+
 #include "shader_types.hpp"
 
 #define VK_CHECK(x)                                                                                             \
@@ -54,6 +56,12 @@
             abort();                                                                                            \
         }                                                                                                       \
     } while (0)
+
+#define VMA_LEAK_LOG_FORMAT(format, ...) \
+    {                                    \
+        printf((format), __VA_ARGS__);   \
+        printf("\n");                    \
+    }
 
 #define DIAGNOSE(diagnostics) \
     if (diagnostics) printf("%s", (char*)diagnostics->getBufferPointer());
@@ -93,7 +101,7 @@
 #define KX_DISABLE_WARNING_NAMELESS_STRUCT
 #define KX_DISABLE_WARNING_SIGNED_UNSIGNED_COMPARISON_MISMATCH KX_DISABLE_WARNING(-Wsign-conversion)
 #define KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH KX_DISABLE_WARNING(-Wsign-conversion)
-#define KX_DISABLE_WARNING_SIZE_T_CONVERSION KX_DISABLE_WARNING(-Wconversion)
+#define KX_DISABLE_WARNING_CONVERSION KX_DISABLE_WARNING(-Wconversion)
 #define KX_DISABLE_WARNING_UNREFERENCED_LOCAL_VARIABLE KX_DISABLE_WARNING(-Wunused-variable)
 #define KX_DISABLE_WARNING_UNUSED_PARAMETER KX_DISABLE_WARNING(-Wunused-parameter)
 #define KX_DISABLE_WARNING_UNUSED_FUNCTION KX_DISABLE_WARNING(-Wunused-function)
@@ -156,6 +164,7 @@ struct Resource
     enum class Type
     {
         Shader,
+        Material,
         Texture,
         Model,
         Mesh,
@@ -243,7 +252,7 @@ glm::mat4 make_transform_matrix(const glm::vec3& position, const glm::quat& rota
 template <typename EnumType>
 static void combo_enum(EnumType& enum_)
 {
-    const std::string type_name = std::string(magic_enum::enum_type_name<EnumType>());
+    const auto type_name = std::string(magic_enum::enum_type_name<EnumType>());
     auto current_name = magic_enum::enum_name(enum_);
     const std::string preview = current_name.empty() ? "Unknown" : std::string(current_name);
 

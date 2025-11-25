@@ -22,7 +22,7 @@ void Input::handle_event(const SDL_Event& event)
         // case SDL_EVENT_MOUSE_BUTTON_UP:
         case SDL_EVENT_MOUSE_MOTION:
         {
-            if (m_mouse_behavior == MouseBehavior::Locked && !m_ignore_mouse_motion_this_frame)
+            if (m_mouse_behavior == MouseBehavior::Locked)
             {
                 m_mouse_delta.x += event.motion.xrel;
                 m_mouse_delta.y += event.motion.yrel;
@@ -37,7 +37,6 @@ void Input::handle_event(const SDL_Event& event)
 
 void Input::update()
 {
-    m_ignore_mouse_motion_this_frame = false;
     m_mouse_delta = glm::vec2(0.f, 0.f);
 
     for (auto& state : m_states)
@@ -63,8 +62,6 @@ void Input::set_mouse_behavior(const MouseBehavior mouse_behavior)
         case MouseBehavior::Locked:
         {
             SDL_SetWindowRelativeMouseMode(&window, true);
-
-            m_ignore_mouse_motion_this_frame = true;
         }
         break;
     }

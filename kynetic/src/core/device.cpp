@@ -41,21 +41,24 @@ Device::Device()
 
     SDL_Vulkan_CreateSurface(m_window, m_instance, nullptr, &m_surface);
 
-    VkPhysicalDeviceVulkan13Features features_13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    features_13.dynamicRendering = true;
-    features_13.synchronization2 = true;
-
-    VkPhysicalDeviceVulkan12Features features_12{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    features_12.bufferDeviceAddress = true;
-    features_12.descriptorIndexing = true;
-
-    VkPhysicalDeviceVulkan11Features features_11{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
-    features_11.shaderDrawParameters = true;
-
     VkPhysicalDeviceFeatures features{};
     features.multiDrawIndirect = true;
     features.drawIndirectFirstInstance = true;
     features.shaderInt64 = true;
+
+    VkPhysicalDeviceVulkan11Features features_11{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+    features_11.shaderDrawParameters = true;
+
+    VkPhysicalDeviceVulkan12Features features_12{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    features_12.bufferDeviceAddress = true;
+    features_12.descriptorBindingPartiallyBound = true;
+    features_12.descriptorBindingSampledImageUpdateAfterBind = true;
+    features_12.descriptorBindingVariableDescriptorCount = true;
+    features_12.runtimeDescriptorArray = true;
+
+    VkPhysicalDeviceVulkan13Features features_13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    features_13.dynamicRendering = true;
+    features_13.synchronization2 = true;
 
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
@@ -91,6 +94,21 @@ Device::Device()
         VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &m_syncs[i].in_flight_fence));
     }
 
+    VmaVulkanFunctions vulkanFunctions = {};
+    vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
+    vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
+
+    VmaAllocatorCreateInfo allocator_info = {
+        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .physicalDevice = m_physical_device,
+        .device = m_device,
+        .pVulkanFunctions = &vulkanFunctions,
+        .instance = m_instance,
+    };
+    vmaCreateAllocator(&allocator_info, &m_allocator);
+
+    init_bindless();
+
     std::vector<PoolSizeRatio> frame_sizes = {
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
@@ -106,12 +124,6 @@ Device::Device()
 
     m_immediate_command_buffer.init(m_device, m_queue_indices.graphics);
     VK_CHECK(vkCreateFence(m_device, &fence_create_info, nullptr, &m_immediate_fence));
-
-    VmaAllocatorCreateInfo allocator_info = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-                                             .physicalDevice = m_physical_device,
-                                             .device = m_device,
-                                             .instance = m_instance};
-    vmaCreateAllocator(&allocator_info, &m_allocator);
 
     VkDescriptorPoolSize pool_sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
@@ -174,6 +186,9 @@ Device::~Device()
         ctx.allocator.destroy_pool();
         ctx.dcb.shutdown();
     }
+
+    vkDestroyDescriptorSetLayout(m_device, m_bindless_layout, nullptr);
+    m_bindless_allocator.destroy_pool();
 
     vmaDestroyAllocator(m_allocator);
 
@@ -270,6 +285,45 @@ void Device::end_frame()
     if (result == VK_ERROR_OUT_OF_DATE_KHR) m_resize_requested = true;
 
     m_frame_count++;
+}
+
+void Device::init_bindless()
+{
+    constexpr uint32_t MAX_BINDLESS_RESOURCES = 16536;
+    constexpr uint32_t MAX_BINDING = MAX_BINDLESS_RESOURCES - 1;
+
+    std::vector<PoolSizeRatio> bindless_sizes = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+    };
+
+    m_bindless_allocator.init_pool(m_device,
+                                   MAX_BINDLESS_RESOURCES,
+                                   bindless_sizes,
+                                   VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT);
+
+    VkDescriptorBindingFlags bindless_flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT_EXT |
+                                              VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT |
+                                              VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfoEXT extended_info{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT,
+        nullptr};
+    extended_info.bindingCount = 1;
+    extended_info.pBindingFlags = &bindless_flags;
+
+    DescriptorLayoutBuilder layout_builder;
+    layout_builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_BINDLESS_RESOURCES);
+    m_bindless_layout = layout_builder.build(m_device,
+                                             VK_SHADER_STAGE_ALL,
+                                             &extended_info,
+                                             VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT);
+
+    VkDescriptorSetVariableDescriptorCountAllocateInfoEXT count_info{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT};
+    count_info.descriptorSetCount = 1;
+    count_info.pDescriptorCounts = &MAX_BINDING;
+
+    m_bindless_set = m_bindless_allocator.allocate(m_bindless_layout, &count_info);
 }
 
 void Device::resize_swapchain()

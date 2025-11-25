@@ -15,6 +15,22 @@ using int2 = glm::ivec2;
 #define column_major
 #endif
 
+enum class RenderChannel
+{
+    Final,
+    TexCoords,
+    NormalTexture,
+    GeometryNormal,
+    GeometryTangent,
+    GeometryBitangent,
+    ShadingNormal,
+    Emissive,
+    BaseColor,
+    Metallic,
+    Roughness,
+    Occlusion
+};
+
 struct Vertex
 {
     float3 position;
@@ -22,12 +38,14 @@ struct Vertex
     float3 normal;
     float uv_y;
     float4 color;
+    float4 tangent;
 };
 
 struct DrawPushConstants
 {
     VkDeviceAddress vertices;
-    VkDeviceAddress instance_data;
+    VkDeviceAddress instances;
+    VkDeviceAddress materials;
 };
 
 struct GradientPushConstants
@@ -43,17 +61,29 @@ struct GradientPushConstants
 struct SceneData
 {
     column_major float4x4 view;
+    column_major float4x4 view_inv;
     column_major float4x4 proj;
     column_major float4x4 vp;
+
     float4 ambient_color;
     float4 sun_direction;
     float4 sun_color;
+
+    RenderChannel debug_channel;
 };
 
 struct InstanceData
 {
-    float4 model0;
-    float4 model1;
-    float4 model2;
-    float4 model3;
+    column_major float4x4 model;
+    column_major float4x4 model_inv;
+
+    uint32_t material_index;
+};
+
+struct MaterialData
+{
+    uint32_t albedo;
+    uint32_t normal;
+    uint32_t metal_rough;
+    uint32_t emissive;
 };

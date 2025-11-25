@@ -18,8 +18,10 @@ class ResourceManager
 
     AllocatedBuffer m_merged_vertex_buffer;
     AllocatedBuffer m_merged_index_buffer;
+    AllocatedBuffer m_material_buffer;
 
     VkDeviceAddress m_merged_vertex_buffer_address;
+    VkDeviceAddress m_material_buffer_address;
 
 public:
     ResourceManager();
@@ -46,6 +48,8 @@ public:
     }
 
     void refresh_mesh_buffers();
+    void refresh_material_buffer();
+    void refresh_bindless_textures();
 };
 
 template <typename T, typename... Args>

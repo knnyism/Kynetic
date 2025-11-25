@@ -2,6 +2,14 @@
 // Created by kenny on 11/4/25.
 //
 
+KX_DISABLE_WARNING_PUSH
+KX_DISABLE_WARNING_CONVERSION
+KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH
+#define STBI_NO_SIMD
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+KX_DISABLE_WARNING_POP
+
 VkCommandPoolCreateInfo vk_init::command_pool_create_info(const uint32_t queue_family_index,
                                                           const VkCommandPoolCreateFlags flags)
 {

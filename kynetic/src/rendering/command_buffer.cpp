@@ -149,13 +149,13 @@ void CommandBuffer::set_push_constants(VkShaderStageFlags stage_flags, uint32_t 
     vkCmdPushConstants(m_command_buffer, m_current_pipeline->get_layout(), stage_flags, offset, size, data);
 }
 
-void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set) const
+void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set, uint32_t first_set, uint32_t count) const
 {
     vkCmdBindDescriptorSets(m_command_buffer,
                             m_current_pipeline->bind_point(),
                             m_current_pipeline->get_layout(),
-                            0,
-                            1,
+                            first_set,
+                            count,
                             &descriptor_set,
                             0,
                             nullptr);

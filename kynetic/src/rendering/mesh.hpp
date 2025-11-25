@@ -23,8 +23,13 @@ class Mesh : public Resource
     VkIndexType m_index_type{VK_INDEX_TYPE_UINT32};
     VkDeviceAddress m_vertex_buffer_address;
 
+    std::shared_ptr<class Material> m_material;
+
 public:
-    Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::span<Vertex> vertices);
+    Mesh(const std::filesystem::path& path,
+         std::span<uint32_t> indices,
+         std::span<Vertex> vertices,
+         std::shared_ptr<Material> material);
     ~Mesh() override;
 
     [[nodiscard]] const VkBuffer& get_indices() const { return m_index_buffer.buffer; }
@@ -38,6 +43,8 @@ public:
     [[nodiscard]] uint32_t get_vertex_count() const { return m_vertex_count; }
 
     [[nodiscard]] VkDeviceAddress get_vertex_buffer_address() const { return m_vertex_buffer_address; }
+
+    [[nodiscard]] const std::shared_ptr<Material>& get_material() const { return m_material; }
 };
 
 }  // namespace kynetic

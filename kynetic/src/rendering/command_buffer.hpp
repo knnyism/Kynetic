@@ -38,7 +38,7 @@ public:
     void set_scissor(uint32_t width, uint32_t height) const;
 
     void bind_pipeline(Pipeline* pipeline);
-    void bind_descriptors(VkDescriptorSet descriptor_set) const;
+    void bind_descriptors(VkDescriptorSet descriptor_set, uint32_t first_set = 0, uint32_t count = 1) const;
     void bind_vertex_buffer(uint32_t first_binding,
                             uint32_t binding_count,
                             VkBuffer vertex_buffer,

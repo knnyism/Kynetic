@@ -18,7 +18,6 @@ void main(uint3 globalID : SV_DispatchThreadID,
     if (texelCoord.x < constants.size.x && texelCoord.y < constants.size.y)
     {
         float blend = float(texelCoord.y)/(constants.size.y);
-
         image[texelCoord] = lerp(topColor, bottomColor, blend);
     }
 }

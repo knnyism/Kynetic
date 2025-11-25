@@ -33,10 +33,14 @@ public:
         m_model = scene.add_model(resources.load<kynetic::Model>("assets/shared_assets/models/sponza/sponza.gltf"));
 
         resources.refresh_mesh_buffers();
+        resources.refresh_bindless_textures();
+        resources.refresh_material_buffer();
     }
 
     void update(float delta_time)
     {
+        ImGui::ShowDemoWindow();
+
         kynetic::Input& input = kynetic::Engine::get().input();
 
         const glm::vec2 delta = -glm::radians(input.get_mouse_delta() * 0.1f);

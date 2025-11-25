@@ -210,10 +210,6 @@ add_library(kynetic STATIC
         src/rendering/shader.hpp
         src/rendering/swapchain.cpp
         src/rendering/swapchain.hpp
-        src/rendering/descriptor_allocator.cpp
-        src/rendering/descriptor_allocator.hpp
-        src/rendering/descriptor_writer.cpp
-        src/rendering/descriptor_writer.hpp
         src/rendering/texture.cpp
         src/rendering/texture.hpp
         src/vma_usage.cpp
@@ -224,6 +220,10 @@ add_library(kynetic STATIC
         src/magic_enum.hpp
         src/core/input.cpp
         src/core/input.hpp
+        src/rendering/material.cpp
+        src/rendering/material.hpp
+        src/rendering/descriptor.cpp
+        src/rendering/descriptor.hpp
 )
 
 target_link_libraries(kynetic PUBLIC
@@ -253,6 +253,7 @@ target_precompile_headers(kynetic PUBLIC
 )
 
 target_compile_definitions(kynetic PUBLIC
+        VMA_DYNAMIC_VULKAN_FUNCTIONS
         GLM_FORCE_DEPTH_ZERO_TO_ONE
         GLM_ENABLE_EXPERIMENTAL
 )

@@ -2,12 +2,14 @@
 // Created by kenny on 11/6/25.
 //
 
-#include "rendering/texture.hpp"
-#include "resource_manager.hpp"
-
 #include "device.hpp"
 #include "engine.hpp"
+
+#include "rendering/texture.hpp"
 #include "rendering/mesh.hpp"
+#include "rendering/material.hpp"
+
+#include "resource_manager.hpp"
 
 using namespace kynetic;
 ResourceManager::ResourceManager()
@@ -26,8 +28,8 @@ ResourceManager::ResourceManager()
                                                VK_IMAGE_USAGE_SAMPLED_BIT,
                                                nearest_sampler));
 
-    uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1.f));
-    m_default_textures.push_back(load<Texture>("dev/grey",
+    uint32_t grey = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.f, 1.f));
+    m_default_textures.push_back(load<Texture>("dev/normal",
                                                &grey,
                                                VkExtent3D{1, 1, 1},
                                                VK_FORMAT_R8G8B8A8_UNORM,
@@ -60,6 +62,7 @@ ResourceManager::~ResourceManager()
 
     if (m_merged_vertex_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_vertex_buffer);
     if (m_merged_index_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_index_buffer);
+    if (m_material_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_material_buffer);
 }
 
 void ResourceManager::refresh_mesh_buffers()
@@ -116,4 +119,82 @@ void ResourceManager::refresh_mesh_buffers()
                     cmd.copy_buffer(mesh->m_index_buffer.buffer, m_merged_index_buffer.buffer, 1, &indexCopy);
                 });
         });
+}
+
+void ResourceManager::refresh_material_buffer()
+{
+    Device& device = Engine::get().device();
+
+    if (m_material_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_material_buffer);
+
+    uint32_t material_count = 0;
+
+    std::vector<MaterialData> material_datas;
+
+    for_each<Material>(
+        [&](const std::shared_ptr<Material>& material)
+        {
+            material->m_handle = material_count++;
+
+            MaterialData& material_data = material_datas.emplace_back();
+            material_data.albedo = material->m_albedo->m_handle;
+            material_data.normal = material->m_normal->m_handle;
+            material_data.metal_rough = material->m_metal_roughness->m_handle;
+            material_data.emissive = material->m_emissive->m_handle;
+        });
+
+    m_material_buffer = device.create_buffer(
+        material_count * sizeof(MaterialData),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                  .buffer = m_material_buffer.buffer};
+    m_material_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+
+    size_t material_buffer_size = material_datas.size() * sizeof(MaterialData);
+
+    AllocatedBuffer staging =
+        device.create_buffer(material_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data;
+    vmaMapMemory(device.get_allocator(), staging.allocation, &data);
+    memcpy(data, material_datas.data(), material_buffer_size);
+    vmaUnmapMemory(device.get_allocator(), staging.allocation);
+
+    device.immediate_submit(
+        [&](const CommandBuffer& cmd)
+        {
+            VkBufferCopy copy;
+            copy.dstOffset = 0;
+            copy.size = material_buffer_size;
+            copy.srcOffset = 0;
+
+            cmd.copy_buffer(staging.buffer, m_material_buffer.buffer, 1, &copy);
+        });
+
+    device.destroy_buffer(staging);
+}
+
+void ResourceManager::refresh_bindless_textures()
+{
+    Device& device = Engine::get().device();
+
+    uint32_t texture_index = 0;
+
+    DescriptorWriter writer;
+    for_each<Texture>(
+        [&](const std::shared_ptr<Texture>& texture)
+        {
+            texture->m_handle = texture_index++;
+
+            writer.write_image(0,
+                               texture->m_image.view,
+                               texture->m_sampler,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                               texture->m_handle);
+        });
+
+    writer.update_set(device.get(), device.get_bindless_set());
 }

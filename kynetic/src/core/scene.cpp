@@ -6,6 +6,7 @@
 #include "core/device.hpp"
 
 #include "core/components.hpp"
+#include "rendering/material.hpp"
 #include "rendering/mesh.hpp"
 #include "rendering/model.hpp"
 
@@ -65,6 +66,7 @@ void Scene::update()
             m_projection[1][1] *= -1;
         });
 
+    if (m_paused) return;
     if (update_instance_data_buffer()) update_indirect_commmand_buffer();
 }
 
@@ -72,12 +74,7 @@ bool Scene::update_instance_data_buffer()
 {
     Device& device = Engine::get().device();
 
-    struct CpuInstanceData
-    {
-        glm::mat4 model;
-    };
-
-    std::unordered_map<Mesh*, std::vector<CpuInstanceData>> instances_by_mesh;
+    std::unordered_map<Mesh*, std::vector<InstanceData>> instances_by_mesh;
 
     uint32_t instance_count = 0;
 
@@ -86,12 +83,14 @@ bool Scene::update_instance_data_buffer()
         {
             for (const auto& mesh : mesh_component.meshes)
             {
-                instances_by_mesh[mesh.get()].push_back({glm::transpose(transform.transform)});
+                instances_by_mesh[mesh.get()].push_back({transform.transform,
+                                                         glm::transpose(glm::inverse(transform.transform)),
+                                                         mesh->get_material()->get_handle()});
                 instance_count++;
             }
         });
 
-    std::vector<CpuInstanceData> instances{instance_count};
+    std::vector<InstanceData> instances{instance_count};
     size_t instance_data_size = instance_count * sizeof(InstanceData);
 
     const bool should_rebuild_draw_commands = m_instance_count != instance_count;
@@ -113,6 +112,8 @@ bool Scene::update_instance_data_buffer()
             for (auto& data : instance_data)
             {
                 instances[instance_index].model = data.model;
+                instances[instance_index].model_inv = data.model_inv;
+                instances[instance_index].material_index = data.material_index;
                 instance_index++;
             }
         }
@@ -124,6 +125,8 @@ bool Scene::update_instance_data_buffer()
             for (auto& data : instance_data)
             {
                 instances[instance_index].model = data.model;
+                instances[instance_index].model_inv = data.model_inv;
+                instances[instance_index].material_index = data.material_index;
                 instance_index++;
             }
         }

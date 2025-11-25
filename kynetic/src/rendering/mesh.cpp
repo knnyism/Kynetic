@@ -4,6 +4,8 @@
 
 #include "mesh.hpp"
 
+#include <utility>
+
 #include "core/device.hpp"
 #include "core/engine.hpp"
 
@@ -11,10 +13,14 @@
 
 using namespace kynetic;
 
-Mesh::Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::span<Vertex> vertices)
+Mesh::Mesh(const std::filesystem::path& path,
+           std::span<uint32_t> indices,
+           std::span<Vertex> vertices,
+           std::shared_ptr<Material> material)
     : Resource(Type::Mesh, path.string()),
       m_index_count(static_cast<uint32_t>(indices.size())),
-      m_vertex_count(static_cast<uint32_t>(vertices.size()))
+      m_vertex_count(static_cast<uint32_t>(vertices.size())),
+      m_material(std::move(material))
 {
     Device& device = Engine::get().device();
 
@@ -64,6 +70,7 @@ Mesh::Mesh(const std::filesystem::path& path, std::span<uint32_t> indices, std::
 
     device.destroy_buffer(staging);
 }
+
 Mesh::~Mesh()
 {
     const Device& device = Engine::get().device();

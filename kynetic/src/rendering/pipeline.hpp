@@ -7,6 +7,7 @@
 namespace kynetic
 {
 
+class Device;
 class Shader;
 
 class Pipeline
@@ -33,11 +34,11 @@ class Pipeline
     std::vector<VkDescriptorSetLayout> m_set_layouts;
 
 public:
-    Pipeline(VkDevice device,
+    Pipeline(Device& device,
              const std::vector<VkDescriptorSetLayout>& set_layouts,
              const std::vector<VkPushConstantRange>& push_constant_ranges,
              VkComputePipelineCreateInfo pipeline_info);
-    Pipeline(VkDevice device,
+    Pipeline(Device& device,
              const std::vector<VkDescriptorSetLayout>& set_layouts,
              const std::vector<VkPushConstantRange>& push_constant_ranges,
              VkGraphicsPipelineCreateInfo pipeline_info);
@@ -76,7 +77,7 @@ public:
     ComputePipelineBuilder& set_shader(const std::shared_ptr<Shader>& shader);
     ComputePipelineBuilder& set_flags(VkPipelineCreateFlags flags);
 
-    Pipeline build(VkDevice device) const;
+    Pipeline build(Device& device) const;
 };
 
 class GraphicsPipelineBuilder
@@ -108,7 +109,7 @@ public:
 
     // GraphicsPipelineBuilder& set_flags(VkPipelineCreateFlags flags);
 
-    Pipeline build(VkDevice device) const;
+    Pipeline build(Device& device) const;
 };
 
 }  // namespace kynetic

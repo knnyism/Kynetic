@@ -9,7 +9,7 @@
 
 #include "renderer.hpp"
 
-#include "rendering/descriptor_writer.hpp"
+#include "rendering/descriptor.hpp"
 #include "rendering/pipeline.hpp"
 #include "rendering/shader.hpp"
 #include "rendering/model.hpp"
@@ -25,10 +25,7 @@ Renderer::Renderer()
 
     init_render_target();
 
-    m_gradient = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/gradient.slang");
-
     m_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/lit.slang");
-
     m_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
                                                     .set_shader(m_lit_shader)
                                                     .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -39,20 +36,7 @@ Renderer::Renderer()
                                                     .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
                                                     .set_multisampling_none()
                                                     .disable_blending()
-                                                    .build(device.get()));
-
-    Effect& gradient = backgroundEffects.emplace_back(
-        "gradient",
-        std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_gradient).build(device.get())));
-    gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-    gradient.data.data2 = glm::vec4(0, 0, 1, 1);
-
-    Effect& sky = backgroundEffects.emplace_back(
-        "sky",
-        std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_gradient).build(device.get())));
-    sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
-
-    m_texture = Engine::get().resources().find<Texture>("dev/missing");
+                                                    .build(device));
 }
 
 Renderer::~Renderer()
@@ -98,20 +82,11 @@ void Renderer::render()
     const auto& video_out = device.get_video_out();
     const VkExtent2D device_extent = device.get_extent();
 
-    if (ImGui::Begin("background"))
+    if (ImGui::Begin("Render Debug"))
     {
-        Effect& selected = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
-        ImGui::Text("Selected effect: %s", selected.name);
-
-        ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, static_cast<int>(backgroundEffects.size()) - 1);
-
-        ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
-        ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
-        ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-        ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
-
-        ImGui::SliderFloat("Render Scale", &m_render_scale, 0.3f, 1.f);
-
+        ImGui::Checkbox("Pause Scene", &scene.m_paused);
+        ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
+        combo_enum(m_render_channel);
         combo_enum(m_rendering_method);
     }
     ImGui::End();
@@ -128,26 +103,7 @@ void Renderer::render()
         .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
         .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
 
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
-    Effect& effect = backgroundEffects[static_cast<size_t>(currentBackgroundEffect)];
-    effect.data.size = glm::ivec2(draw_extent.width, draw_extent.height);
-
-    ctx.dcb.bind_pipeline(effect.pipeline.get());
-    {
-        VkDescriptorSet gradient_descriptor = ctx.allocator.allocate(effect.pipeline->get_set_layout(0));
-
-        DescriptorWriter writer;
-        writer.write_image(0, m_render_target.view, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        writer.update_set(device.get(), gradient_descriptor);
-        ctx.dcb.bind_descriptors(gradient_descriptor);
-    }
-    ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(GradientPushConstants), &effect.data);
-    ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.width) / 16.0f)),
-                     static_cast<uint32_t>(std::ceilf(static_cast<float>(draw_extent.height) / 16.0f)),
-                     1);
-
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     VkRenderingAttachmentInfo color_attachment =
@@ -175,29 +131,28 @@ void Renderer::render()
         vmaMapMemory(device.get_allocator(), scene_data_buffer.allocation, &mapped_data);
         auto* scene_uniform_data = static_cast<SceneData*>(mapped_data);
         scene_uniform_data->view = view;
+        scene_uniform_data->view_inv = glm::inverse(glm::transpose(view));
         scene_uniform_data->proj = projection;
         scene_uniform_data->vp = projection * view;
         scene_uniform_data->ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f);
-        scene_uniform_data->sun_direction = glm::vec4(0.f, -1.f, 0.f, 0.f);
-        scene_uniform_data->sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f);
+        scene_uniform_data->sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f);
+        scene_uniform_data->sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 5.f;
+        scene_uniform_data->debug_channel = m_render_channel;
         vmaUnmapMemory(device.get_allocator(), scene_data_buffer.allocation);
 
         {
             DescriptorWriter writer;
             writer.write_buffer(0, scene_data_buffer.buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-            writer.write_image(1,
-                               m_texture->m_image.view,
-                               m_texture->m_sampler,
-                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
             writer.update_set(device.get(), mesh_descriptor);
         }
         ctx.dcb.bind_descriptors(mesh_descriptor);
+        ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
     }
 
     DrawPushConstants push_constants;
     push_constants.vertices = resources.m_merged_vertex_buffer_address;
-    push_constants.instance_data = scene.get_instance_data();
+    push_constants.instances = scene.get_instance_data_buffer_address();
+    push_constants.materials = resources.m_material_buffer_address;
     ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                sizeof(DrawPushConstants),
                                &push_constants);
@@ -231,6 +186,4 @@ void Renderer::render()
     ctx.dcb.transition_image(video_out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     ctx.dcb.copy_image_to_image(m_render_target.image, video_out, draw_extent, device_extent);
-
-    m_frame_count++;
 }
