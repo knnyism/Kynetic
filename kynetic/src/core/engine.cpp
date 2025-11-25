@@ -62,6 +62,7 @@ void Engine::update()
         }
         else if (m_device->begin_frame())
         {
+            m_render_callback();
             m_renderer->render();
             m_device->end_frame();
         }
@@ -71,3 +72,5 @@ void Engine::update()
 }
 
 void Engine::set_update_callback(const std::function<void(float)>& callback) { m_update_callback = callback; }
+
+void Engine::set_render_callback(const std::function<void()>& callback) { m_render_callback = callback; }

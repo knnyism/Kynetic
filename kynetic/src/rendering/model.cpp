@@ -32,7 +32,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
     auto load_texture = [&](const fastgltf::TextureInfo& texture_info, VkFormat image_format) -> std::shared_ptr<Texture>
     {
         auto& texture_asset = asset.textures[texture_info.textureIndex];
-        const std::string texture_path = path / "texture" / std::to_string(texture_info.textureIndex);
+        const std::filesystem::path texture_path = path / "texture" / std::to_string(texture_info.textureIndex);
         std::shared_ptr<Texture> texture = Engine::get().resources().find<Texture>(texture_path);
         if (texture) return texture;
 
@@ -112,7 +112,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
 
     auto load_material = [&](size_t material_index) -> std::shared_ptr<Material>
     {
-        const std::string material_path = path / "material" / std::to_string(material_index);
+        const std::filesystem::path material_path = path / "material" / std::to_string(material_index);
         const fastgltf::Material& material_asset = asset.materials[material_index];
         std::shared_ptr<Material> material = Engine::get().resources().find<Material>(material_path);
         if (material) return material;

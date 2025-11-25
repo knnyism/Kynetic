@@ -39,8 +39,6 @@ public:
 
     void update(float delta_time)
     {
-        ImGui::ShowDemoWindow();
-
         kynetic::Input& input = kynetic::Engine::get().input();
 
         const glm::vec2 delta = -glm::radians(input.get_mouse_delta() * 0.1f);
@@ -71,11 +69,14 @@ public:
         input.set_mouse_behavior(m_is_mouse_locked ? kynetic::Input::MouseBehavior::Locked
                                                    : kynetic::Input::MouseBehavior::Free);
     }
+
+    void render() { ImGui::ShowDemoWindow(); }
 };
 
 Viewer* viewer = nullptr;
 
 void update(float delta_time) { viewer->update(delta_time); }
+void render() { viewer->render(); }
 
 int main()
 {
@@ -83,6 +84,7 @@ int main()
     viewer = new Viewer();
 
     engine.set_update_callback(update);
+    engine.set_render_callback(render);
 
     engine.init();
     engine.update();

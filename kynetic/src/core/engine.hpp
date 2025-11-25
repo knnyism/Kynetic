@@ -17,6 +17,7 @@ class Engine
     bool is_shutting_down{false};
 
     std::function<void(float)> m_update_callback;
+    std::function<void()> m_render_callback;
 
 public:
     Engine();
@@ -40,5 +41,6 @@ public:
     void update();
 
     void set_update_callback(const std::function<void(float)>& callback);
+    void set_render_callback(const std::function<void()>& callback);
 };
 }  // namespace kynetic

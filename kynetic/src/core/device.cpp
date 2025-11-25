@@ -211,6 +211,10 @@ Device::~Device()
 
 bool Device::begin_frame()
 {
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
     auto& ctx = get_context();
     uint32_t frame_index = m_frame_count % static_cast<uint32_t>(m_syncs.size());
 
@@ -224,6 +228,7 @@ bool Device::begin_frame()
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
         m_resize_requested = true;
+        ImGui::EndFrame();
         return false;
     }
 
@@ -377,10 +382,6 @@ void Device::update()
     }
 
     if (m_resize_requested) resize_swapchain();
-
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
 }
 
 bool Device::is_minimized() const { return m_is_minimized; }
@@ -437,7 +438,7 @@ AllocatedImage Device::create_image(VkExtent3D size, VkFormat format, VkImageUsa
     new_image.extent = size;
 
     VkImageCreateInfo img_info = vk_init::image_create_info(format, usage, size);
-    if (mipmapped) img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+    if (mipmapped) img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(max(size.width, size.height)))) + 1;
 
     VmaAllocationCreateInfo alloc_info = {};
     alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
