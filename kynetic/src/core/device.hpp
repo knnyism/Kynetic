@@ -97,8 +97,10 @@ public:
     [[nodiscard]] SDL_Window& get_window() const { return *m_window; }
     [[nodiscard]] VkExtent2D get_extent() const { return m_window_extent; }
 
-    [[nodiscard]] Context& get_context() { return m_ctxs[m_frame_count % MAX_FRAMES_IN_FLIGHT]; }
-    [[nodiscard]] const Context& get_context() const { return m_ctxs[m_frame_count % MAX_FRAMES_IN_FLIGHT]; }
+    [[nodiscard]] uint32_t get_frame_index() const { return m_frame_count % MAX_FRAMES_IN_FLIGHT; }
+
+    [[nodiscard]] Context& get_context() { return m_ctxs[get_frame_index()]; }
+    [[nodiscard]] const Context& get_context() const { return m_ctxs[get_frame_index()]; }
 
     [[nodiscard]] Slang::ComPtr<slang::IGlobalSession>& get_slang_session() { return m_slang_session; }
     [[nodiscard]] const Slang::ComPtr<slang::IGlobalSession>& get_slang_session() const { return m_slang_session; }

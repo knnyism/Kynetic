@@ -84,7 +84,6 @@ void Renderer::render()
 
     if (ImGui::Begin("Render Debug"))
     {
-        ImGui::Checkbox("Pause Scene", &scene.m_paused);
         ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
         combo_enum(m_render_channel);
         combo_enum(m_rendering_method);
@@ -169,11 +168,12 @@ void Renderer::render()
         break;
         case RenderingMethod::GpuDriven:
         {
-            ctx.dcb.multi_draw_indirect(scene.m_indirect_command_buffer.buffer,
+            ctx.dcb.multi_draw_indirect(scene.get_indirect_commmand_buffer().buffer,
                                         scene.get_draw_count(),
                                         sizeof(VkDrawIndexedIndirectCommand));
         }
         break;
+        case RenderingMethod::GpuDrivenMeshlets:
         default:
             break;
     }

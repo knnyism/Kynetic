@@ -515,12 +515,12 @@ AllocatedBuffer Device::create_buffer(size_t size, VkBufferUsageFlags usage, Vma
     VmaAllocationCreateInfo vmaallocInfo = {};
     vmaallocInfo.usage = memory_usage;
     vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    AllocatedBuffer newBuffer;
+    AllocatedBuffer new_buffer;
 
     VK_CHECK(
-        vmaCreateBuffer(m_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info));
+        vmaCreateBuffer(m_allocator, &bufferInfo, &vmaallocInfo, &new_buffer.buffer, &new_buffer.allocation, &new_buffer.info));
 
-    return newBuffer;
+    return new_buffer;
 }
 
 void Device::destroy_buffer(const AllocatedBuffer& buffer) const

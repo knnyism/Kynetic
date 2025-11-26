@@ -54,14 +54,13 @@ void Engine::update()
         m_device->update();
         m_update_callback(delta_time);
         m_input->update();
-
-        m_scene->update();
         if (m_device->is_minimized())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         else if (m_device->begin_frame())
         {
+            m_scene->update();
             m_render_callback();
             m_renderer->render();
             m_device->end_frame();

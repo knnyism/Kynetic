@@ -23,14 +23,6 @@ Scene::Scene()
         .each([](TransformComponent& transform) { transform.is_dirty = true; });
 }
 
-Scene::~Scene()
-{
-    const Device& device = Engine::get().device();
-
-    device.destroy_buffer(m_instance_data_buffer);
-    device.destroy_buffer(m_indirect_command_buffer);
-}
-
 void Scene::update()
 {
     m_scene.query_builder<TransformComponent>().each(
@@ -66,8 +58,8 @@ void Scene::update()
             m_projection[1][1] *= -1;
         });
 
-    if (m_paused) return;
-    if (update_instance_data_buffer()) update_indirect_commmand_buffer();
+    update_instance_data_buffer();
+    update_indirect_commmand_buffer();
 }
 
 bool Scene::update_instance_data_buffer()
@@ -132,37 +124,32 @@ bool Scene::update_instance_data_buffer()
         }
     }
 
-    if (m_instance_data_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_instance_data_buffer);
-    m_instance_data_buffer =
-        device.create_buffer(instance_data_size,
-                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                             VMA_MEMORY_USAGE_GPU_ONLY);
+    uint32_t frame_index = device.get_frame_index();
+    Context& ctx = device.get_context();
 
-    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                        .buffer = m_instance_data_buffer.buffer};
-    m_instance_data_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    auto& instance_data_buffer = m_instance_data_buffers[frame_index];
+
+    instance_data_buffer = device.create_buffer(
+        instance_data_size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(instance_data_buffer); });
 
     const AllocatedBuffer staging =
         device.create_buffer(instance_data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
 
     void* data;
     vmaMapMemory(device.get_allocator(), staging.allocation, &data);
     memcpy(data, instances.data(), instance_data_size);
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
-    device.immediate_submit(
-        [&](const CommandBuffer& cmd)
-        {
-            VkBufferCopy copy{};
-            copy.dstOffset = 0;
-            copy.srcOffset = 0;
-            copy.size = instance_data_size;
+    VkBufferCopy copy{};
+    copy.dstOffset = 0;
+    copy.srcOffset = 0;
+    copy.size = instance_data_size;
 
-            cmd.copy_buffer(staging.buffer, m_instance_data_buffer.buffer, 1, &copy);
-        });
-
-    device.destroy_buffer(staging);
+    ctx.dcb.copy_buffer(staging.buffer, instance_data_buffer.buffer, 1, &copy);
 
     return should_rebuild_draw_commands;
 }
@@ -171,32 +158,33 @@ void Scene::update_indirect_commmand_buffer()
 {
     Device& device = Engine::get().device();
 
+    uint32_t frame_index = device.get_frame_index();
+    Context& ctx = device.get_context();
+
+    auto& indirect_command_buffer = m_indirect_command_buffer[frame_index];
+
     size_t indirect_buffer_size = sizeof(VkDrawIndexedIndirectCommand) * m_draw_commands.size();
 
-    if (m_indirect_command_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_indirect_command_buffer);
-    m_indirect_command_buffer = device.create_buffer(indirect_buffer_size,
-                                                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
-                                                     VMA_MEMORY_USAGE_GPU_ONLY);
+    indirect_command_buffer = device.create_buffer(indirect_buffer_size,
+                                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                                                   VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(indirect_command_buffer); });
+
     AllocatedBuffer staging =
         device.create_buffer(indirect_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
 
     void* data;
     vmaMapMemory(device.get_allocator(), staging.allocation, &data);
     memcpy(data, m_draw_commands.data(), indirect_buffer_size);
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
-    device.immediate_submit(
-        [&](const CommandBuffer& cmd)
-        {
-            VkBufferCopy copy{};
-            copy.dstOffset = 0;
-            copy.srcOffset = 0;
-            copy.size = indirect_buffer_size;
+    VkBufferCopy copy{};
+    copy.dstOffset = 0;
+    copy.srcOffset = 0;
+    copy.size = indirect_buffer_size;
 
-            cmd.copy_buffer(staging.buffer, m_indirect_command_buffer.buffer, 1, &copy);
-        });
-
-    device.destroy_buffer(staging);
+    ctx.dcb.copy_buffer(staging.buffer, indirect_command_buffer.buffer, 1, &copy);
 }
 
 flecs::entity Scene::add_camera(bool is_main_camera) const
@@ -235,4 +223,22 @@ flecs::entity Scene::add_model(const std::shared_ptr<Model>& model) const
     traverse_nodes(model->get_root_node(), root_entity);
 
     return root_entity;
+}
+
+VkDeviceAddress Scene::get_instance_data_buffer_address() const
+{
+    const Device& device = Engine::get().device();
+    uint32_t frame_index = device.get_frame_index();
+
+    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                        .buffer = m_instance_data_buffers[frame_index].buffer};
+    return vkGetBufferDeviceAddress(device.get(), &device_address_info);
+}
+
+AllocatedBuffer Scene::get_indirect_commmand_buffer() const
+{
+    const Device& device = Engine::get().device();
+    uint32_t frame_index = device.get_frame_index();
+
+    return m_instance_data_buffers[frame_index];
 }

@@ -2,25 +2,25 @@
 
 struct CoarseVertex
 {
-    float3 color;
-    float3 normal;
-    float3 tangent;
-    float3 bitangent;
-    float2 uv;
-
-    float3 world_position;
+    float3               color;
+    float3               normal;
+    float3               tangent;
+    float3               bitangent;
+    float2               uv;
+                         
+    float3               world_position;
     nointerpolation uint material_index;
 };
 
 struct VertexStageOutput
 {
-    CoarseVertex    coarseVertex    : CoarseVertex;
-    float4          sv_position     : SV_Position;
+    CoarseVertex coarseVertex : CoarseVertex;
+    float4       sv_position  : SV_Position;
 };
 
-ConstantBuffer<SceneData> scene;
-[[vk::binding(0, 1)]] Sampler2D textures[];
+ConstantBuffer<SceneData>               scene;
 
+[[vk::binding(0, 1)]] Sampler2D         textures[];
 [[vk::push_constant]] DrawPushConstants constants;
 
 [shader("vertex")]
@@ -59,19 +59,19 @@ struct Fragment
 
 float3 evaluate_light(float3 albedo, float3 V, float3 N, float NoV, float NoL, float roughness, float metallic, float3 f0, float3 L, float3 radiance)
 {
-	float3 H = normalize(V + L);
+    float3 H = normalize(V + L);
 
-	float NoH = saturate(dot(N, H));
-	float LoH = saturate(dot(L, H));
+    float NoH = saturate(dot(N, H));
+    float LoH = saturate(dot(L, H));
 
-	float3 F = schlick(f0, LoH);
-	float D = ggx(roughness, NoH);
-	float G = smith_ggx_correlated(NoV, NoL, roughness);
+    float3 F = schlick(f0, LoH);
+    float D = ggx(roughness, NoH);
+    float G = smith_ggx_correlated(NoV, NoL, roughness);
 
-	float3 Fd = albedo * (1.0 - F) * (1.0 - metallic) * lambertian();
-	float3 Fr = F * D * G;
+    float3 Fd = albedo * (1.0 - F) * (1.0 - metallic) * lambertian();
+    float3 Fr = F * D * G;
 
-	return (Fd + Fr) * radiance * NoL;
+    return (Fd + Fr) * radiance * NoL;
 }
 
 [shader("fragment")]
@@ -87,49 +87,49 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
     float3 metal_rough = textures[material.metal_rough].Sample(coarse_vertex.uv).xyz;
     float3 emissive = textures[material.emissive].Sample(coarse_vertex.uv).xyz;
 
-	float3x3 tbn = float3x3(coarse_vertex.tangent, coarse_vertex.bitangent, coarse_vertex.normal);
+    float3x3 tbn = float3x3(coarse_vertex.tangent, coarse_vertex.bitangent, coarse_vertex.normal);
 
     float3 shading_normal = normalize(mul(normal_map, tbn));
-	float3 shading_view = normalize(scene.view_inv[3].xyz - coarse_vertex.world_position);
+    float3 shading_view = normalize(scene.view_inv[3].xyz - coarse_vertex.world_position);
 
     float linear_roughness = max(metal_rough.g, EPSILON);
-	float roughness = linear_roughness * linear_roughness;
-	float metallic = metal_rough.b;
+    float roughness = linear_roughness * linear_roughness;
+    float metallic = metal_rough.b;
 
     float n_dot_v = max(abs(dot(shading_normal, shading_view)), EPSILON);
     float3 f0 = lerp(0.04, albedo, metallic);
 
-	float3 Lo = 0.0;
+    float3 Lo = 0.0;
 
-    float3 light_direction = scene.sun_direction.xyz;
+    float3 light_direction = -scene.sun_direction.xyz;
     float3 light_color = scene.sun_color.xyz;
-    
+
     float n_dot_l = saturate(dot(shading_normal, -scene.sun_direction.xyz));
     Lo += evaluate_light(albedo, shading_view, shading_normal, n_dot_v, n_dot_l,
                                                                         roughness,
                                                                         metallic,
                                                                         f0,
-                                                                        -light_direction,
+                                                                        light_direction,
                                                                         light_color);
 
     Lo += emissive;
 
     switch (scene.debug_channel)
-	{
-		case RenderChannel::Final:				output.color = float4(Lo, 1.0); break;
-		case RenderChannel::TexCoords:			output.color = float4(coarse_vertex.uv.x, coarse_vertex.uv.y, 0.0, 1.0); break;
-		case RenderChannel::NormalTexture:		output.color = float4(normal_map * 0.5 + 0.5, 1.0); break;
-		case RenderChannel::GeometryTangent:	output.color = float4(tbn[0].xyz * 0.5 + 0.5, 1.0); break;
-		case RenderChannel::GeometryBitangent:	output.color = float4(tbn[1].xyz * 0.5 + 0.5, 1.0); break;
-		case RenderChannel::GeometryNormal:		output.color = float4(tbn[2].xyz * 0.5 + 0.5, 1.0); break;
-		case RenderChannel::ShadingNormal:		output.color = float4(shading_normal * 0.5 + 0.5, 1.0); break;
-		case RenderChannel::BaseColor:			output.color = float4(albedo, 1.0); break;
-		case RenderChannel::Metallic:			output.color = float4(metallic, metallic, metallic, 1.0); break;
-		case RenderChannel::Roughness:			output.color = float4(linear_roughness, linear_roughness, linear_roughness, 1.0); break;
-		case RenderChannel::Emissive:			output.color = float4(emissive, 1.0); break;
-		// case RenderChannel::Occlusion:			output.color = float4(occlusion, occlusion, occlusion, 1.0); break;
-		default:								output.color = float4(1.0, 0.0, 1.0, 1.0); break;
-	}
+    {
+        case RenderChannel::Final:              output.color = float4(Lo, 1.0); break;
+        case RenderChannel::TexCoords:          output.color = float4(coarse_vertex.uv.x, coarse_vertex.uv.y, 0.0, 1.0); break;
+        case RenderChannel::NormalTexture:      output.color = float4(normal_map * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryTangent:    output.color = float4(tbn[0].xyz * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryBitangent:  output.color = float4(tbn[1].xyz * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryNormal:     output.color = float4(tbn[2].xyz * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::ShadingNormal:      output.color = float4(shading_normal * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::BaseColor:          output.color = float4(albedo, 1.0); break;
+        case RenderChannel::Metallic:           output.color = float4(metallic, metallic, metallic, 1.0); break;
+        case RenderChannel::Roughness:          output.color = float4(linear_roughness, linear_roughness, linear_roughness, 1.0); break;
+        case RenderChannel::Emissive:           output.color = float4(emissive, 1.0); break;
+        // case RenderChannel::Occlusion:		ouput.color = float4(occlusion, occlusion, occlusion, 1.0); break;
+        default: output.color = float4(1.0, 0.0, 1.0, 1.0); break;
+    }
 
     return output;
 }
