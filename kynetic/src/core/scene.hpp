@@ -37,9 +37,11 @@ public:
     flecs::entity add_model(const std::shared_ptr<class Model>& model) const;
     flecs::world& get() { return m_scene; }
 
-    [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draw_commands() const { return m_draw_commands; }
     [[nodiscard]] VkDeviceAddress get_instance_data_buffer_address() const;
-    [[nodiscard]] AllocatedBuffer get_indirect_commmand_buffer() const;
+
+    [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draw_commands() const { return m_draw_commands; }
+    [[nodiscard]] VkDeviceAddress get_indirect_commmand_buffer_address() const;
+    [[nodiscard]] VkBuffer get_indirect_commmand_buffer() const;
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draw_commands.size()); }
 
     [[nodiscard]] glm::mat4 get_projection() const { return m_projection; }

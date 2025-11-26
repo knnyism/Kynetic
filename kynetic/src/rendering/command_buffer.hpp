@@ -44,7 +44,18 @@ public:
                             VkBuffer vertex_buffer,
                             VkDeviceSize offset = 0) const;
     void bind_index_buffer(VkBuffer index_buffer, VkIndexType index_type, VkDeviceSize offset = 0) const;
-    void set_push_constants(VkShaderStageFlags stage_flage, uint32_t size, const void* data, uint32_t offset = 0) const;
+
+    void set_push_constants(VkShaderStageFlags stage_flags, uint32_t size, const void* data, uint32_t offset = 0) const;
+
+    void pipeline_barrier(VkPipelineStageFlags src_stage_mask,
+                          VkPipelineStageFlags dst_stage_mask,
+                          VkDependencyFlags dependency_flags,
+                          uint32_t memory_barrier_count,
+                          const VkMemoryBarrier* pMemoryBarriers,
+                          uint32_t buffer_memory_barrier_count,
+                          const VkBufferMemoryBarrier* pBufferMemoryBarriers,
+                          uint32_t image_memory_barrier_count,
+                          const VkImageMemoryBarrier* pImageMemoryBarriers) const;
 
     void dispatch(uint32_t x, uint32_t y, uint32_t z) const;
 

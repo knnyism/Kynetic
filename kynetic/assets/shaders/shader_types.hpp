@@ -48,14 +48,11 @@ struct DrawPushConstants
     VkDeviceAddress materials;
 };
 
-struct GradientPushConstants
+struct FrustumCullPushConstants
 {
-    float4 data1;
-    float4 data2;
-    float4 data3;
-    float4 data4;
-
-    int2 size;
+    VkDeviceAddress draw_commands;
+    VkDeviceAddress instances;
+    uint32_t draw_count;
 };
 
 struct SceneData

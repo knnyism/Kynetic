@@ -166,7 +166,9 @@ void Scene::update_indirect_commmand_buffer()
     size_t indirect_buffer_size = sizeof(VkDrawIndexedIndirectCommand) * m_draw_commands.size();
 
     indirect_command_buffer = device.create_buffer(indirect_buffer_size,
-                                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                                       VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                                                    VMA_MEMORY_USAGE_GPU_ONLY);
     ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(indirect_command_buffer); });
 
@@ -235,10 +237,20 @@ VkDeviceAddress Scene::get_instance_data_buffer_address() const
     return vkGetBufferDeviceAddress(device.get(), &device_address_info);
 }
 
-AllocatedBuffer Scene::get_indirect_commmand_buffer() const
+VkBuffer Scene::get_indirect_commmand_buffer() const
 {
     const Device& device = Engine::get().device();
     uint32_t frame_index = device.get_frame_index();
 
-    return m_instance_data_buffers[frame_index];
+    return m_indirect_command_buffer[frame_index].buffer;
+}
+
+VkDeviceAddress Scene::get_indirect_commmand_buffer_address() const
+{
+    const Device& device = Engine::get().device();
+    uint32_t frame_index = device.get_frame_index();
+
+    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                        .buffer = m_indirect_command_buffer[frame_index].buffer};
+    return vkGetBufferDeviceAddress(device.get(), &device_address_info);
 }

@@ -6,6 +6,9 @@
 
 namespace kynetic
 {
+
+class Shader;
+
 class Renderer
 {
     enum class RenderingMethod
@@ -23,8 +26,11 @@ class Renderer
 
     DeletionQueue m_deletion_queue;
 
-    std::shared_ptr<class Shader> m_lit_shader;
+    std::shared_ptr<Shader> m_lit_shader;
+    std::shared_ptr<Shader> m_frustum_cull_shader;
+
     std::unique_ptr<Pipeline> m_lit_pipeline;
+    std::unique_ptr<Pipeline> m_frustum_cull_pipeline;
 
     float m_render_scale{1.f};
     RenderingMethod m_rendering_method{RenderingMethod::CpuDriven};
@@ -33,6 +39,7 @@ class Renderer
 
     void init_render_target();
     void destroy_render_target() const;
+    void gpu_frustum_cull() const;
     void update();
 
 public:

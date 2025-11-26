@@ -37,6 +37,10 @@ Renderer::Renderer()
                                                     .set_multisampling_none()
                                                     .disable_blending()
                                                     .build(device));
+
+    m_frustum_cull_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/frustum_cull.slang");
+    m_frustum_cull_pipeline =
+        std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_frustum_cull_shader).build(device));
 }
 
 Renderer::~Renderer()
@@ -72,6 +76,40 @@ void Renderer::destroy_render_target() const
     device.destroy_image(m_depth_render_target);
 }
 
+void Renderer::gpu_frustum_cull() const
+{
+    Device& device = Engine::get().device();
+    Scene& scene = Engine::get().scene();
+    Context& ctx = device.get_context();
+
+    uint32_t draw_count = scene.get_draw_count();
+
+    const uint32_t dispatch_x = draw_count > 0 ? 1 + (draw_count - 1) / 64 : 1;
+
+    FrustumCullPushConstants push_constants;
+    push_constants.draw_commands = scene.get_indirect_commmand_buffer_address();
+    push_constants.draw_count = draw_count;
+
+    ctx.dcb.bind_pipeline(m_frustum_cull_pipeline.get());
+    ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(FrustumCullPushConstants), &push_constants);
+    ctx.dcb.dispatch(dispatch_x, 1, 1);
+
+    VkMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+
+    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                             0,
+                             1,
+                             &barrier,
+                             0,
+                             nullptr,
+                             0,
+                             nullptr);
+}
+
 void Renderer::render()
 {
     Device& device = Engine::get().device();
@@ -97,24 +135,6 @@ void Renderer::render()
         destroy_render_target();
         init_render_target();
     }
-
-    const VkExtent2D draw_extent = {
-        .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
-        .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
-
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-    VkRenderingAttachmentInfo color_attachment =
-        vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingAttachmentInfo depth_attachment =
-        vk_init::depth_attachment_info(m_depth_render_target.view, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
-    ctx.dcb.begin_rendering(render_info);
-
-    ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
-    ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
     glm::mat4 view = scene.get_view();
     glm::mat4 projection = scene.get_projection();
@@ -158,17 +178,43 @@ void Renderer::render()
 
     ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
 
+    const VkExtent2D draw_extent = {
+        .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
+        .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
+
+    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingAttachmentInfo color_attachment =
+        vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depth_attachment =
+        vk_init::depth_attachment_info(m_depth_render_target.view, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
+
     switch (m_rendering_method)
     {
         case RenderingMethod::CpuDriven:
         {
+            ctx.dcb.begin_rendering(render_info);
+
+            ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
+            ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
+
             for (const auto& draw : scene.get_draw_commands())
                 ctx.dcb.draw(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset, draw.firstInstance);
         }
         break;
         case RenderingMethod::GpuDriven:
         {
-            ctx.dcb.multi_draw_indirect(scene.get_indirect_commmand_buffer().buffer,
+            gpu_frustum_cull();
+
+            ctx.dcb.begin_rendering(render_info);
+
+            ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
+            ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
+
+            ctx.dcb.multi_draw_indirect(scene.get_indirect_commmand_buffer(),
                                         scene.get_draw_count(),
                                         sizeof(VkDrawIndexedIndirectCommand));
         }

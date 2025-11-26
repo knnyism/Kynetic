@@ -149,6 +149,29 @@ void CommandBuffer::set_push_constants(VkShaderStageFlags stage_flags, uint32_t 
     vkCmdPushConstants(m_command_buffer, m_current_pipeline->get_layout(), stage_flags, offset, size, data);
 }
 
+// TODO: Use builder pattern and move to pipeline.cpp
+void CommandBuffer::pipeline_barrier(VkPipelineStageFlags src_stage_mask,
+                                     VkPipelineStageFlags dst_stage_mask,
+                                     VkDependencyFlags dependency_flags,
+                                     uint32_t memory_barrier_count,
+                                     const VkMemoryBarrier* pMemoryBarriers,
+                                     uint32_t buffer_memory_barrier_count,
+                                     const VkBufferMemoryBarrier* pBufferMemoryBarriers,
+                                     uint32_t image_memory_barrier_count,
+                                     const VkImageMemoryBarrier* pImageMemoryBarriers) const
+{
+    vkCmdPipelineBarrier(m_command_buffer,
+                         src_stage_mask,
+                         dst_stage_mask,
+                         dependency_flags,
+                         memory_barrier_count,
+                         pMemoryBarriers,
+                         buffer_memory_barrier_count,
+                         pBufferMemoryBarriers,
+                         image_memory_barrier_count,
+                         pImageMemoryBarriers);
+}
+
 void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set, uint32_t first_set, uint32_t count) const
 {
     vkCmdBindDescriptorSets(m_command_buffer,
