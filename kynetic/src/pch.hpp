@@ -42,7 +42,7 @@
 #include "vma_usage.hpp"
 
 #include "imgui.h"
-#include "magic_enum.hpp"
+#include "magic_enum/magic_enum.hpp"
 
 #include "stb_image.h"
 

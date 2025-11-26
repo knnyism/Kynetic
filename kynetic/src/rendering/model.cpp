@@ -13,6 +13,8 @@
 #include "stb_image.h"
 
 KX_DISABLE_WARNING_PUSH
+KX_DISABLE_WARNING_CONVERSION
+KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH
 KX_DISABLE_WARNING_HIDES_LOCAL_DECLARATION
 #include "mikktspace.h"
 KX_DISABLE_WARNING_POP
@@ -254,7 +256,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                         [](SMikkTSpaceContext const* pContext, float* fvPosOut, int iFace, int iVert)
                     {
                         const auto* context = static_cast<Context*>(pContext->m_pUserData);
-                        const auto& vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto& vertexIndex = context->indices->at(static_cast<size_t>(iFace * 3 + iVert));
                         const auto& vertex = context->vertices->at(vertexIndex);
 
                         fvPosOut[0] = vertex.position.x;
@@ -265,7 +267,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                         [](SMikkTSpaceContext const* pContext, float* fvNormOut, int iFace, int iVert)
                     {
                         const auto* context = static_cast<Context*>(pContext->m_pUserData);
-                        const auto& vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto& vertexIndex = context->indices->at(static_cast<size_t>(iFace * 3 + iVert));
                         const auto& vertex = context->vertices->at(vertexIndex);
 
                         fvNormOut[0] = vertex.normal.x;
@@ -276,7 +278,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                         [](SMikkTSpaceContext const* pContext, float* fvTexcOut, int iFace, int iVert)
                     {
                         const auto* context = static_cast<Context*>(pContext->m_pUserData);
-                        const auto vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto vertexIndex = context->indices->at(static_cast<size_t>(iFace * 3 + iVert));
                         const auto& vertex = context->vertices->at(vertexIndex);
 
                         fvTexcOut[0] = vertex.uv_x;
@@ -286,7 +288,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                         [](SMikkTSpaceContext const* pContext, float const* fvTangent, float fSign, int iFace, int iVert)
                     {
                         auto* context = static_cast<Context*>(pContext->m_pUserData);
-                        const auto vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto vertexIndex = context->indices->at(static_cast<size_t>(iFace * 3 + iVert));
                         auto& vertex = context->vertices->at(vertexIndex);
 
                         vertex.tangent.x = fvTangent[0];

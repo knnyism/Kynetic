@@ -123,6 +123,27 @@ set(FLECS_EXAMPLES OFF)
 
 FetchContent_MakeAvailable(flecs)
 
+# magic_enum
+FetchContent_Declare(
+        magic_enum
+        GIT_REPOSITORY https://github.com/Neargye/magic_enum.git
+        GIT_TAG v0.9.7
+)
+FetchContent_MakeAvailable(magic_enum)
+
+# MikkTSpace
+FetchContent_Declare(
+        mikktspace
+        GIT_REPOSITORY https://github.com/mmikk/MikkTSpace.git
+        GIT_TAG master
+)
+FetchContent_MakeAvailable(mikktspace)
+
+add_library(mikktspace STATIC
+        ${mikktspace_SOURCE_DIR}/mikktspace.c
+)
+target_include_directories(mikktspace PUBLIC ${mikktspace_SOURCE_DIR})
+
 # slang
 if (WIN32)
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -219,9 +240,6 @@ add_library(kynetic STATIC
         src/rendering/material.hpp
         src/rendering/descriptor.cpp
         src/rendering/descriptor.hpp
-        src/magic_enum.hpp
-        src/mikktspace.cpp
-        src/mikktspace.h
         src/vma_usage.cpp
         src/vma_usage.hpp
         src/pch.cpp
@@ -241,6 +259,8 @@ target_link_libraries(kynetic PUBLIC
         stb_image
         slang
         flecs::flecs_static
+        magic_enum::magic_enum
+        mikktspace
 )
 
 target_compile_features(kynetic PUBLIC cxx_std_20)
