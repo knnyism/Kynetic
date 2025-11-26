@@ -139,22 +139,6 @@ void Renderer::render()
     ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    const VkExtent2D draw_extent = {
-        .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
-        .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
-
-    VkRenderingAttachmentInfo color_attachment =
-        vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingAttachmentInfo depth_attachment =
-        vk_init::depth_attachment_info(m_depth_render_target.view, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
-
-    ctx.dcb.begin_rendering(render_info);
-
-    ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
-    ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
-
     glm::mat4 view = scene.get_view();
     glm::mat4 projection = scene.get_projection();
 
@@ -197,17 +181,39 @@ void Renderer::render()
 
     ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
 
+    const VkExtent2D draw_extent = {
+        .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
+        .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
+
+    VkRenderingAttachmentInfo color_attachment =
+        vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo depth_attachment =
+        vk_init::depth_attachment_info(m_depth_render_target.view, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
 
     switch (m_rendering_method)
     {
         case RenderingMethod::CpuDriven:
         {
+            ctx.dcb.begin_rendering(render_info);
+
+            ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
+            ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
+
             for (const auto& draw : scene.get_draw_commands())
                 ctx.dcb.draw(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset, draw.firstInstance);
         }
         break;
         case RenderingMethod::GpuDriven:
         {
+            gpu_frustum_cull();
+
+            ctx.dcb.begin_rendering(render_info);
+
+            ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
+            ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
+
             ctx.dcb.multi_draw_indirect(scene.get_indirect_commmand_buffer(),
                                         scene.get_draw_count(),
                                         sizeof(VkDrawIndexedIndirectCommand));

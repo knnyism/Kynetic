@@ -4,6 +4,8 @@
 
 #pragma once
 
+#define NOMINMAX
+
 #include <memory>
 #include <optional>
 #include <string>

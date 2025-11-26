@@ -32,13 +32,9 @@ void main(uint3 global_id : SV_DispatchThreadID)
     uint32_t last_instance_id = draw_command.firstInstance + draw_command.instanceCount;
     for (uint32_t instance_id = draw_command.firstInstance; instance_id < last_instance_id; ++instance_id)
     {
-        InstanceData instance = instances[instance_id];
-
-        if (!is_visible(instance)) {
+        if (!is_visible(instances[instance_id])) {
             draw_command.instanceCount -= 1;
-
-            // if (draw_command.instanceCount > 0) __atomic_exchange<InstanceData>(instance, 
-            //                                                                     instances[last_instance_id]);
+            // if (draw_command.instanceCount > 0) instances[instance_id] = instances[last_instance_id];
         }
     }
 }

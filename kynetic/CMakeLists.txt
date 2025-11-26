@@ -187,17 +187,20 @@ if (WIN32)
 endif ()
 
 add_library(kynetic STATIC
-        src/pch.cpp
-        src/pch.hpp
         assets/shaders/shader_types.hpp
+        src/core/components.hpp
         src/core/device.cpp
         src/core/device.hpp
         src/core/engine.cpp
         src/core/engine.hpp
+        src/core/input.cpp
+        src/core/input.hpp
         src/core/renderer.cpp
         src/core/renderer.hpp
         src/core/resource_manager.cpp
         src/core/resource_manager.hpp
+        src/core/scene.cpp
+        src/core/scene.hpp
         src/rendering/command_buffer.cpp
         src/rendering/command_buffer.hpp
         src/rendering/mesh.cpp
@@ -212,18 +215,17 @@ add_library(kynetic STATIC
         src/rendering/swapchain.hpp
         src/rendering/texture.cpp
         src/rendering/texture.hpp
-        src/vma_usage.cpp
-        src/vma_usage.hpp
-        src/core/components.hpp
-        src/core/scene.cpp
-        src/core/scene.hpp
-        src/magic_enum.hpp
-        src/core/input.cpp
-        src/core/input.hpp
         src/rendering/material.cpp
         src/rendering/material.hpp
         src/rendering/descriptor.cpp
         src/rendering/descriptor.hpp
+        src/magic_enum.hpp
+        src/mikktspace.cpp
+        src/mikktspace.h
+        src/vma_usage.cpp
+        src/vma_usage.hpp
+        src/pch.cpp
+        src/pch.hpp
 )
 
 target_link_libraries(kynetic PUBLIC

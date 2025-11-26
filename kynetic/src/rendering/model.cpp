@@ -12,6 +12,11 @@
 
 #include "stb_image.h"
 
+KX_DISABLE_WARNING_PUSH
+KX_DISABLE_WARNING_HIDES_LOCAL_DECLARATION
+#include "mikktspace.h"
+KX_DISABLE_WARNING_POP
+
 using namespace kynetic;
 
 Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.string())
@@ -206,15 +211,6 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                                                                   { vertices[initial_vtx + index].normal = v; });
                 }
 
-                auto* tangents = p.findAttribute("TANGENT");
-                if (tangents != p.attributes.end())
-                {
-                    fastgltf::iterateAccessorWithIndex<glm::vec4>(asset,
-                                                                  asset.accessors[tangents->accessorIndex],
-                                                                  [&](glm::vec4 v, size_t index)
-                                                                  { vertices[initial_vtx + index].tangent = v; });
-                }
-
                 // load UVs
                 auto* uv = p.findAttribute("TEXCOORD_0");
                 if (uv != p.attributes.end())
@@ -226,6 +222,85 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                                                                       vertices[initial_vtx + index].uv_x = v.x;
                                                                       vertices[initial_vtx + index].uv_y = v.y;
                                                                   });
+                }
+
+                // load tangents or generate them
+                auto* tangents = p.findAttribute("TANGENT");
+                if (tangents != p.attributes.end())
+                {
+                    fastgltf::iterateAccessorWithIndex<glm::vec4>(asset,
+                                                                  asset.accessors[tangents->accessorIndex],
+                                                                  [&](glm::vec4 v, size_t index)
+                                                                  { vertices[initial_vtx + index].tangent = v; });
+                }
+                else
+                {
+                    struct Context
+                    {
+                        std::vector<uint32_t>* indices;
+                        std::vector<Vertex>* vertices;
+                    } userContext;
+                    userContext.indices = &indices;
+                    userContext.vertices = &vertices;
+
+                    SMikkTSpaceInterface mikkTSpaceInterface;
+                    mikkTSpaceInterface.m_getNumFaces = [](SMikkTSpaceContext const* pContext) -> int
+                    {
+                        const auto* context = static_cast<Context*>(pContext->m_pUserData);
+                        return static_cast<int>(context->indices->size()) / 3;
+                    };
+                    mikkTSpaceInterface.m_getNumVerticesOfFace = [](SMikkTSpaceContext const*, int) -> int { return 3; };
+                    mikkTSpaceInterface.m_getPosition =
+                        [](SMikkTSpaceContext const* pContext, float* fvPosOut, int iFace, int iVert)
+                    {
+                        const auto* context = static_cast<Context*>(pContext->m_pUserData);
+                        const auto& vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto& vertex = context->vertices->at(vertexIndex);
+
+                        fvPosOut[0] = vertex.position.x;
+                        fvPosOut[1] = vertex.position.y;
+                        fvPosOut[2] = vertex.position.z;
+                    };
+                    mikkTSpaceInterface.m_getNormal =
+                        [](SMikkTSpaceContext const* pContext, float* fvNormOut, int iFace, int iVert)
+                    {
+                        const auto* context = static_cast<Context*>(pContext->m_pUserData);
+                        const auto& vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto& vertex = context->vertices->at(vertexIndex);
+
+                        fvNormOut[0] = vertex.normal.x;
+                        fvNormOut[1] = vertex.normal.y;
+                        fvNormOut[2] = vertex.normal.z;
+                    };
+                    mikkTSpaceInterface.m_getTexCoord =
+                        [](SMikkTSpaceContext const* pContext, float* fvTexcOut, int iFace, int iVert)
+                    {
+                        const auto* context = static_cast<Context*>(pContext->m_pUserData);
+                        const auto vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        const auto& vertex = context->vertices->at(vertexIndex);
+
+                        fvTexcOut[0] = vertex.uv_x;
+                        fvTexcOut[1] = vertex.uv_y;
+                    };
+                    mikkTSpaceInterface.m_setTSpaceBasic =
+                        [](SMikkTSpaceContext const* pContext, float const* fvTangent, float fSign, int iFace, int iVert)
+                    {
+                        auto* context = static_cast<Context*>(pContext->m_pUserData);
+                        const auto vertexIndex = context->indices->at(iFace * 3 + iVert);
+                        auto& vertex = context->vertices->at(vertexIndex);
+
+                        vertex.tangent.x = fvTangent[0];
+                        vertex.tangent.y = fvTangent[1];
+                        vertex.tangent.z = fvTangent[2];
+                        vertex.tangent.w = fSign;
+                    };
+                    mikkTSpaceInterface.m_setTSpace = nullptr;
+
+                    SMikkTSpaceContext mikkTSpaceContext;
+                    mikkTSpaceContext.m_pInterface = &mikkTSpaceInterface;
+                    mikkTSpaceContext.m_pUserData = &userContext;
+
+                    genTangSpaceDefault(&mikkTSpaceContext);
                 }
 
                 // load vertex colors

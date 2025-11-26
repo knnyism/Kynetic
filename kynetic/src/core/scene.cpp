@@ -76,7 +76,7 @@ bool Scene::update_instance_data_buffer()
             for (const auto& mesh : mesh_component.meshes)
             {
                 instances_by_mesh[mesh.get()].push_back({transform.transform,
-                                                         glm::transpose(glm::inverse(transform.transform)),
+                                                         glm::transpose(glm::inverse(glm::mat3(transform.transform))),
                                                          mesh->get_material()->get_handle()});
                 instance_count++;
             }

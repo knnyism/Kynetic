@@ -3,10 +3,11 @@
 struct CoarseVertex
 {
     float3               color;
-    float3               normal;
+    float2               uv;
+
     float3               tangent;
     float3               bitangent;
-    float2               uv;
+    float3               normal;
                          
     float3               world_position;
     nointerpolation uint material_index;
@@ -35,13 +36,14 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
     InstanceData instance = instances[instance_id];
 
     float4x4 mvp = mul(scene.vp, instance.model);
+    float3x3 model_inv = float3x3(instance.model_inv);
 
     output.coarseVertex.color = v.color.xyz;
     output.coarseVertex.uv = float2(v.uv_x, v.uv_y);
 
-    output.coarseVertex.normal = normalize(mul(float3x3(instance.model_inv), v.normal));
-    output.coarseVertex.tangent = normalize(mul(float3x3(instance.model), v.tangent.xyz));
-    output.coarseVertex.bitangent = normalize(cross(output.coarseVertex.normal, output.coarseVertex.tangent) * v.tangent.w);
+    output.coarseVertex.tangent = normalize(mul(model_inv, v.tangent.xyz));
+    output.coarseVertex.bitangent = normalize(mul(model_inv, cross(v.normal, v.tangent.xyz) * v.tangent.w)); 
+    output.coarseVertex.normal = normalize(mul(model_inv, v.normal));
 
     output.coarseVertex.world_position = mul(instance.model, float4(v.position, 1.0)).xyz;
 
@@ -119,9 +121,9 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
         case RenderChannel::Final:              output.color = float4(Lo, 1.0); break;
         case RenderChannel::TexCoords:          output.color = float4(coarse_vertex.uv.x, coarse_vertex.uv.y, 0.0, 1.0); break;
         case RenderChannel::NormalTexture:      output.color = float4(normal_map * 0.5 + 0.5, 1.0); break;
-        case RenderChannel::GeometryTangent:    output.color = float4(tbn[0].xyz * 0.5 + 0.5, 1.0); break;
-        case RenderChannel::GeometryBitangent:  output.color = float4(tbn[1].xyz * 0.5 + 0.5, 1.0); break;
-        case RenderChannel::GeometryNormal:     output.color = float4(tbn[2].xyz * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryTangent:    output.color = float4(tbn[0] * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryBitangent:  output.color = float4(tbn[1] * 0.5 + 0.5, 1.0); break;
+        case RenderChannel::GeometryNormal:     output.color = float4(tbn[2] * 0.5 + 0.5, 1.0); break;
         case RenderChannel::ShadingNormal:      output.color = float4(shading_normal * 0.5 + 0.5, 1.0); break;
         case RenderChannel::BaseColor:          output.color = float4(albedo, 1.0); break;
         case RenderChannel::Metallic:           output.color = float4(metallic, metallic, metallic, 1.0); break;
