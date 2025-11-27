@@ -14,17 +14,6 @@
 
 using namespace kynetic;
 
-void Mesh::calculate_radius(const std::span<Vertex>& vertices)
-{
-    m_centroid = glm::vec3(0.f);
-    for (const auto& v : vertices) m_centroid += v.position;
-    m_centroid /= static_cast<float>(vertices.size());
-
-    m_radius = glm::distance2(vertices[0].position, m_centroid);
-    for (const auto& v : vertices) m_radius = std::max(m_radius, glm::distance2(v.position, m_centroid));
-    m_radius = std::nextafter(sqrtf(m_radius), std::numeric_limits<float>::max());
-}
-
 Mesh::Mesh(const std::filesystem::path& path,
            std::span<uint32_t> indices,
            std::span<Vertex> vertices,
@@ -34,7 +23,13 @@ Mesh::Mesh(const std::filesystem::path& path,
       m_vertex_count(static_cast<uint32_t>(vertices.size())),
       m_material(std::move(material))
 {
-    calculate_radius(vertices);
+    m_centroid = glm::vec3(0.f);
+    for (const auto& v : vertices) m_centroid += v.position;
+    m_centroid /= static_cast<float>(vertices.size());
+
+    m_radius = glm::distance2(vertices[0].position, m_centroid);
+    for (const auto& v : vertices) m_radius = std::max(m_radius, glm::distance2(v.position, m_centroid));
+    m_radius = std::nextafter(sqrtf(m_radius), std::numeric_limits<float>::max());
 
     Device& device = Engine::get().device();
 

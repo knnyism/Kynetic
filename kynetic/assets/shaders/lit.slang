@@ -116,7 +116,8 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
 
     Lo += emissive;
 
-    switch (scene.debug_channel)
+    RenderChannel channel = RenderChannel::Final;
+    switch (channel)
     {
         case RenderChannel::Final:              output.color = float4(Lo, 1.0); break;
         case RenderChannel::TexCoords:          output.color = float4(coarse_vertex.uv.x, coarse_vertex.uv.y, 0.0, 1.0); break;

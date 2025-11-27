@@ -162,6 +162,15 @@ struct AllocatedBuffer
 
 namespace kynetic
 {
+
+enum class RenderMode
+{
+    CpuDriven,
+    GpuDriven,
+
+    GpuDrivenMeshlets
+};
+
 struct Resource
 {
     enum class Type

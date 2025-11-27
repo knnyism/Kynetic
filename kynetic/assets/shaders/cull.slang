@@ -9,8 +9,8 @@ struct VkDrawIndexedIndirectCommand
     uint32_t firstInstance;
 }
 
-ConstantBuffer<SceneData> scene;
-RWStructuredBuffer<InstanceData> instances;
+ConstantBuffer<SceneData>                      scene;
+RWStructuredBuffer<InstanceData>               instances;
 
 [[vk::push_constant]] FrustumCullPushConstants constants;
 
@@ -22,7 +22,7 @@ void main(uint3 global_id : SV_DispatchThreadID)
 
     if (id >= constants.draw_count) return;
 
-    VkDrawIndexedIndirectCommand* draw_commands = (VkDrawIndexedIndirectCommand*)(constants.draw_commands);
+    VkDrawIndexedIndirectCommand* draw_commands = (VkDrawIndexedIndirectCommand*)constants.draw_commands;
 
     VkDrawIndexedIndirectCommand draw_command = draw_commands[id];
     uint32_t write_index = draw_command.firstInstance;

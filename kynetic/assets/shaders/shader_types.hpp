@@ -64,8 +64,6 @@ struct SceneData
     float4 ambient_color;
     float4 sun_direction;
     float4 sun_color;
-
-    RenderChannel debug_channel;
 };
 
 struct InstanceData

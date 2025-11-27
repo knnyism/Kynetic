@@ -27,7 +27,6 @@ class Mesh : public Resource
 
     glm::vec3 m_centroid{0.f};
     float m_radius{0.0f};
-    void calculate_radius(const std::span<Vertex>& vertices);
 
 public:
     Mesh(const std::filesystem::path& path,

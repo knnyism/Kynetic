@@ -2,10 +2,13 @@
 // Created by kenny on 11/19/25.
 //
 
-#include "core/engine.hpp"
-#include "core/device.hpp"
+#include "engine.hpp"
+#include "device.hpp"
+#include "resource_manager.hpp"
+#include "components.hpp"
 
-#include "core/components.hpp"
+#include "rendering/shader.hpp"
+#include "rendering/pipeline.hpp"
 #include "rendering/material.hpp"
 #include "rendering/mesh.hpp"
 #include "rendering/model.hpp"
@@ -14,6 +17,29 @@
 
 using namespace kynetic;
 
+bool is_visible(glm::mat4 mat, glm::vec3 origin, float radius)
+{
+    std::array<glm::vec4, 6> planes{};
+    for (auto i = 0; i < 3; ++i)
+    {
+        for (size_t j = 0; j < 2; ++j)
+        {
+            const float sign = j ? 1.f : -1.f;
+            for (auto k = 0; k < 4; ++k) planes[2 * i + j][k] = mat[k][3] + sign * mat[k][i];
+        }
+    }
+
+    for (auto&& plane : planes) plane /= glm::length(glm::vec3(plane));
+
+    std::array<int, 4> V{0, 1, 4, 5};
+    return std::ranges::all_of(V,
+                               [planes, origin, radius](size_t i)
+                               {
+                                   const auto& plane = planes[i];
+                                   return dot(origin, glm::vec3(plane)) + plane.w + radius >= 0;
+                               });
+}
+
 Scene::Scene()
 {
     m_root = m_scene.entity().add<TransformComponent>();
@@ -21,10 +47,68 @@ Scene::Scene()
     m_scene.observer<TransformComponent>("TransformDirty")
         .event(flecs::OnSet)
         .each([](TransformComponent& transform) { transform.is_dirty = true; });
+
+    m_cull_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/cull.slang");
+    m_cull_pipeline =
+        std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_cull_shader).build(Engine::get().device()));
+}
+
+Scene::~Scene() = default;
+
+void Scene::cpu_cull(const glm::mat4& vp)
+{
+    for (VkDrawIndexedIndirectCommand& draw_command : m_draws)
+    {
+        uint32_t write_index = draw_command.firstInstance;
+
+        for (uint32_t read_index = draw_command.firstInstance;
+             read_index < draw_command.firstInstance + draw_command.instanceCount;
+             ++read_index)
+        {
+            InstanceData& read_instance = m_instances[read_index];
+
+            if (is_visible(vp, read_instance.position, read_instance.position.w))
+            {
+                if (write_index != read_index) m_instances[write_index] = m_instances[read_index];
+                write_index++;
+            }
+        }
+
+        draw_command.instanceCount = write_index - draw_command.firstInstance;
+    }
+}
+
+void Scene::gpu_cull() const
+{
+    Device& device = Engine::get().device();
+    Context& ctx = device.get_context();
+
+    ctx.dcb.bind_pipeline(m_cull_pipeline.get());
+
+    VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_cull_pipeline->get_set_layout(0));
+    {
+        DescriptorWriter writer;
+        writer.write_buffer(0, get_scene_buffer().buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writer.write_buffer(1, get_instance_buffer().buffer, VK_WHOLE_SIZE, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        writer.update_set(device.get(), scene_descriptor);
+    }
+    ctx.dcb.bind_descriptors(scene_descriptor);
+
+    uint32_t draw_count = get_draw_count();
+
+    FrustumCullPushConstants push_constants;
+    push_constants.draw_count = draw_count;
+    push_constants.draw_commands = m_draw_buffer_address;
+    ctx.dcb.set_push_constants(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(FrustumCullPushConstants), &push_constants);
+
+    const uint32_t dispatch_x = draw_count > 0 ? 1 + (draw_count - 1) / 64 : 1;
+    ctx.dcb.dispatch(dispatch_x, 1, 1);
 }
 
 void Scene::update()
 {
+    Device& device = Engine::get().device();
+
     m_scene.query_builder<TransformComponent>().each(
         [](const flecs::entity entity, const TransformComponent& transform)
         {
@@ -47,187 +131,146 @@ void Scene::update()
             }
         });
 
-    const Device& device = Engine::get().device();
     const float aspect = static_cast<float>(device.get_extent().width) / static_cast<float>(device.get_extent().height);
 
     m_scene.query_builder<CameraComponent, TransformComponent, MainCameraTag>().build().each(
         [&](const CameraComponent& camera, const TransformComponent& transform, const MainCameraTag&)
         {
             m_view = glm::inverse(transform.transform);
-            m_projection =
-                glm::perspective(camera.fovy * glm::radians(0.5f), aspect * camera.aspect, camera.far_plane, camera.near_plane);
-            m_projection_debug =
-                glm::perspective(camera.fovy * 2.f, aspect * camera.aspect, camera.far_plane, camera.near_plane);
+            m_projection = glm::perspective(camera.fovy, aspect * camera.aspect, camera.far_plane, camera.near_plane);
             m_projection[1][1] *= -1;
-            m_projection_debug[1][1] *= -1;
         });
 
-    constexpr bool NO_INSTANCING = false;
+    m_draws.clear();
+    m_instances.clear();
 
-    uint32_t instance_count = 0;
-    if (NO_INSTANCING)
-    {
-        m_draw_commands.clear();
-        m_instances.clear();
-
-        m_scene.query_builder<TransformComponent, MeshComponent>().build().each(
-            [&](const TransformComponent& transform, const MeshComponent& mesh_component)
+    Mesh* last_mesh = nullptr;
+    m_scene.query_builder<TransformComponent, MeshComponent>()
+        .term_at(1)
+        .in()
+        .order_by<MeshComponent>([](flecs::entity_t, const MeshComponent* m1, flecs::entity_t, const MeshComponent* m2)
+                                 { return (m1->mesh.get() > m2->mesh.get()) - (m1->mesh.get() < m2->mesh.get()); })
+        .build()
+        .each(
+            [&](const TransformComponent& t, const MeshComponent& m)
             {
-                for (const auto& mesh : mesh_component.meshes)
+                glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
+
+                float max_scale =
+                    glm::max(glm::length(glm::vec3(t.transform[0])),
+                             glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
+
+                InstanceData& instance = m_instances.emplace_back();
+                instance.model = t.transform;
+                instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
+                instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
+                instance.material_index = m.mesh->get_material()->get_handle();
+
+                if (last_mesh == m.mesh.get())
                 {
-                    VkDrawIndexedIndirectCommand& batch = m_draw_commands.emplace_back();
-                    batch.firstIndex = mesh->get_index_offset();
-                    batch.indexCount = mesh->get_index_count();
-                    batch.firstInstance = instance_count++;
-                    batch.instanceCount = 1;
-                    batch.vertexOffset = static_cast<int32_t>(mesh->get_vertex_offset());
-
-                    glm::vec3 world_center = glm::vec3(transform.transform * glm::vec4(mesh->get_centroid(), 1.0f));
-
-                    float max_scale = glm::max(glm::length(glm::vec3(transform.transform[0])),
-                                               glm::max(glm::length(glm::vec3(transform.transform[1])),
-                                                        glm::length(glm::vec3(transform.transform[2]))));
-
-                    m_instances.push_back(
-                        InstanceData{.model = transform.transform,
-                                     .model_inv = glm::transpose(glm::inverse(glm::mat3(transform.transform))),
-                                     .position = glm::vec4(world_center, mesh->get_radius() * max_scale),
-                                     .material_index = mesh->get_material()->get_handle()});
+                    m_draws.back().instanceCount++;
                 }
-            });
-    }
-    else
-    {
-        std::unordered_map<Mesh*, std::vector<InstanceData>> instances_by_mesh;
-
-        m_scene.query_builder<TransformComponent, MeshComponent>().build().each(
-            [&](const TransformComponent& transform, const MeshComponent& mesh_component)
-            {
-                for (const auto& mesh : mesh_component.meshes)
+                else
                 {
-                    glm::vec3 world_center = glm::vec3(transform.transform * glm::vec4(mesh->get_centroid(), 1.0f));
+                    VkDrawIndexedIndirectCommand& draw = m_draws.emplace_back();
+                    draw.firstIndex = m.mesh->get_index_offset();
+                    draw.indexCount = m.mesh->get_index_count();
+                    draw.firstInstance = static_cast<uint32_t>(m_instances.size() - 1);
+                    draw.instanceCount = 1;
+                    draw.vertexOffset = static_cast<int32_t>(m.mesh->get_vertex_offset());
 
-                    float max_scale = glm::max(glm::length(glm::vec3(transform.transform[0])),
-                                               glm::max(glm::length(glm::vec3(transform.transform[1])),
-                                                        glm::length(glm::vec3(transform.transform[2]))));
-
-                    instances_by_mesh[mesh.get()].push_back(
-                        InstanceData{.model = transform.transform,
-                                     .model_inv = glm::transpose(glm::inverse(glm::mat3(transform.transform))),
-                                     .position = glm::vec4(world_center, mesh->get_radius() * max_scale),
-                                     .material_index = mesh->get_material()->get_handle()});
-                    instance_count++;
+                    last_mesh = m.mesh.get();
                 }
             });
 
-        const bool should_rebuild_draw_commands = m_instance_count != instance_count;
-        m_instance_count = instance_count;
+    m_scene_data = SceneData{
+        .view = m_view,
+        .view_inv = glm::inverse(glm::transpose(m_view)),
+        .proj = m_projection,
+        .vp = m_projection * m_view,
+        .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
+        .sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f),
+        .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 5.f,
+    };
 
-        m_instances.resize(instance_count);
-
-        uint32_t instance_index = 0;
-        if (should_rebuild_draw_commands)
-        {
-            m_draw_commands.clear();
-            for (auto [mesh, instance_data] : instances_by_mesh)
-            {
-                VkDrawIndexedIndirectCommand& batch = m_draw_commands.emplace_back();
-                batch.firstIndex = mesh->get_index_offset();
-                batch.indexCount = mesh->get_index_count();
-                batch.firstInstance = instance_index;
-                batch.instanceCount = static_cast<uint32_t>(instance_data.size());
-                batch.vertexOffset = static_cast<int32_t>(mesh->get_vertex_offset());
-
-                for (auto data : instance_data)
-                {
-                    m_instances[instance_index] = data;
-                    instance_index++;
-                }
-            }
-        }
-        else
-        {
-            for (auto& [mesh, instance_data] : instances_by_mesh)
-            {
-                for (auto& data : instance_data)
-                {
-                    m_instances[instance_index] = data;
-                    instance_index++;
-                }
-            }
-        }
-    }
+    update_buffers();
 }
 
-bool Scene::update_instance_data_buffer()
+void Scene::update_buffers()
 {
     Device& device = Engine::get().device();
-
-    m_instance_data_size = m_instances.size() * sizeof(InstanceData);
-
-    uint32_t frame_index = device.get_frame_index();
     Context& ctx = device.get_context();
 
-    auto& instance_data_buffer = m_instance_data_buffers[frame_index];
+    size_t instance_buffer_size = m_instances.size() * sizeof(InstanceData);
+    size_t draw_size = m_draws.size() * sizeof(VkDrawIndexedIndirectCommand);
 
-    instance_data_buffer = device.create_buffer(
-        m_instance_data_size,
+    uint32_t frame_index = device.get_frame_index();
+
+    auto& instances_buffer = m_instances_buffers[frame_index];
+    auto& draw_buffer = m_draw_buffers[frame_index];
+    auto& scene_buffer = m_scene_buffers[frame_index];
+
+    instances_buffer = device.create_buffer(
+        instance_buffer_size,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
-    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(instance_data_buffer); });
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(instances_buffer); });
 
-    const AllocatedBuffer staging =
-        device.create_buffer(m_instance_data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    {
+        const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                            .buffer = instances_buffer.buffer};
+        m_instances_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
+    draw_buffer = device.create_buffer(draw_size,
+                                       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                                       VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(draw_buffer); });
+
+    {
+        const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                            .buffer = draw_buffer.buffer};
+        m_draw_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
+    scene_buffer = device.create_buffer(sizeof(SceneData),
+                                        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                        VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(scene_buffer); });
+
+    const AllocatedBuffer staging = device.create_buffer(instance_buffer_size + draw_size + sizeof(SceneData),
+                                                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                                         VMA_MEMORY_USAGE_CPU_ONLY);
     ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
 
     void* data;
     vmaMapMemory(device.get_allocator(), staging.allocation, &data);
-    memcpy(data, m_instances.data(), m_instance_data_size);
+    memcpy(data, m_instances.data(), instance_buffer_size);
+    memcpy(static_cast<char*>(data) + instance_buffer_size, m_draws.data(), draw_size);
+    memcpy(static_cast<char*>(data) + instance_buffer_size + draw_size, &m_scene_data, sizeof(SceneData));
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
-    VkBufferCopy copy{};
-    copy.dstOffset = 0;
-    copy.srcOffset = 0;
-    copy.size = m_instance_data_size;
+    VkBufferCopy instance_copy;
+    instance_copy.dstOffset = 0;
+    instance_copy.srcOffset = 0;
+    instance_copy.size = instance_buffer_size;
 
-    ctx.dcb.copy_buffer(staging.buffer, instance_data_buffer.buffer, 1, &copy);
+    ctx.dcb.copy_buffer(staging.buffer, instances_buffer.buffer, 1, &instance_copy);
 
-    return false;
-}
+    VkBufferCopy draw_copy;
+    draw_copy.dstOffset = 0;
+    draw_copy.srcOffset = instance_buffer_size;
+    draw_copy.size = draw_size;
 
-void Scene::update_indirect_commmand_buffer()
-{
-    Device& device = Engine::get().device();
+    ctx.dcb.copy_buffer(staging.buffer, draw_buffer.buffer, 1, &draw_copy);
 
-    uint32_t frame_index = device.get_frame_index();
-    Context& ctx = device.get_context();
+    VkBufferCopy scene_data_copy;
+    scene_data_copy.dstOffset = 0;
+    scene_data_copy.srcOffset = instance_buffer_size + draw_size;
+    scene_data_copy.size = sizeof(SceneData);
 
-    auto& indirect_command_buffer = m_indirect_command_buffer[frame_index];
-
-    size_t indirect_buffer_size = sizeof(VkDrawIndexedIndirectCommand) * m_draw_commands.size();
-
-    indirect_command_buffer = device.create_buffer(indirect_buffer_size,
-                                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                                                       VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                                   VMA_MEMORY_USAGE_GPU_ONLY);
-    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(indirect_command_buffer); });
-
-    AllocatedBuffer staging =
-        device.create_buffer(indirect_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
-
-    void* data;
-    vmaMapMemory(device.get_allocator(), staging.allocation, &data);
-    memcpy(data, m_draw_commands.data(), indirect_buffer_size);
-    vmaUnmapMemory(device.get_allocator(), staging.allocation);
-
-    VkBufferCopy copy{};
-    copy.dstOffset = 0;
-    copy.srcOffset = 0;
-    copy.size = indirect_buffer_size;
-
-    ctx.dcb.copy_buffer(staging.buffer, indirect_command_buffer.buffer, 1, &copy);
+    ctx.dcb.copy_buffer(staging.buffer, scene_buffer.buffer, 1, &scene_data_copy);
 }
 
 flecs::entity Scene::add_camera(bool is_main_camera) const
@@ -250,15 +293,11 @@ flecs::entity Scene::add_model(const std::shared_ptr<Model>& model) const
     std::function<void(const Model::Node&, flecs::entity)> traverse_nodes =
         [&](const Model::Node& node, const flecs::entity parent)
     {
-        const flecs::entity child_entity = m_scene.entity().child_of(parent).add<TransformComponent>();
+        const flecs::entity child_entity = m_scene.entity().child_of(parent).set<TransformComponent>(
+            {.translation = node.translation, .rotation = node.rotation, .scale = node.scale});
 
-        if (!node.meshes.empty())
-        {
-            child_entity.add<MeshComponent>();
-            child_entity.set<MeshComponent>({node.meshes});
-        }
-
-        child_entity.set<TransformComponent>({.translation = node.translation, .rotation = node.rotation, .scale = node.scale});
+        for (const auto& mesh : node.meshes)
+            m_scene.entity().child_of(child_entity).add<TransformComponent>().set<MeshComponent>({mesh});
 
         for (const auto& child : node.children) traverse_nodes(child, child_entity);
     };
@@ -268,38 +307,70 @@ flecs::entity Scene::add_model(const std::shared_ptr<Model>& model) const
     return root_entity;
 }
 
-VkDeviceAddress Scene::get_instance_data_buffer_address() const
+AllocatedBuffer Scene::get_instance_buffer() const
 {
     const Device& device = Engine::get().device();
     uint32_t frame_index = device.get_frame_index();
 
-    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                        .buffer = m_instance_data_buffers[frame_index].buffer};
-    return vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    return m_instances_buffers[frame_index];
 }
 
-VkBuffer Scene::get_instance_data_buffer() const
+AllocatedBuffer Scene::get_draw_buffer() const
 {
     const Device& device = Engine::get().device();
     uint32_t frame_index = device.get_frame_index();
 
-    return m_instance_data_buffers[frame_index].buffer;
+    return m_draw_buffers[frame_index];
 }
 
-VkBuffer Scene::get_indirect_commmand_buffer() const
+AllocatedBuffer Scene::get_scene_buffer() const
 {
     const Device& device = Engine::get().device();
     uint32_t frame_index = device.get_frame_index();
 
-    return m_indirect_command_buffer[frame_index].buffer;
+    return m_scene_buffers[frame_index];
 }
 
-VkDeviceAddress Scene::get_indirect_commmand_buffer_address() const
+void Scene::cull(RenderMode render_mode)
 {
-    const Device& device = Engine::get().device();
-    uint32_t frame_index = device.get_frame_index();
+    switch (render_mode)
+    {
+        case RenderMode::CpuDriven:
+        {
+            cpu_cull(m_scene_data.vp);
 
-    const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                        .buffer = m_indirect_command_buffer[frame_index].buffer};
-    return vkGetBufferDeviceAddress(device.get(), &device_address_info);
+            update_buffers();
+        }
+        break;
+        case RenderMode::GpuDriven:
+        case RenderMode::GpuDrivenMeshlets:
+        {
+            gpu_cull();
+        }
+        break;
+    }
+}
+
+void Scene::draw(RenderMode render_mode) const
+{
+    Device& device = Engine::get().device();
+    Context& ctx = device.get_context();
+
+    switch (render_mode)
+    {
+        case RenderMode::CpuDriven:
+        {
+            for (const auto& draw : get_draws())
+                ctx.dcb.draw(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset, draw.firstInstance);
+        }
+        break;
+        case RenderMode::GpuDriven:
+        {
+            ctx.dcb.multi_draw_indirect(get_draw_buffer().buffer, get_draw_count(), sizeof(VkDrawIndexedIndirectCommand));
+        }
+        break;
+        case RenderMode::GpuDrivenMeshlets:
+        default:
+            break;
+    }
 }
