@@ -25,6 +25,10 @@ class Mesh : public Resource
 
     std::shared_ptr<class Material> m_material;
 
+    glm::vec3 m_centroid{0.f};
+    float m_radius{0.0f};
+    void calculate_radius(const std::span<Vertex>& vertices);
+
 public:
     Mesh(const std::filesystem::path& path,
          std::span<uint32_t> indices,
@@ -45,6 +49,9 @@ public:
     [[nodiscard]] VkDeviceAddress get_vertex_buffer_address() const { return m_vertex_buffer_address; }
 
     [[nodiscard]] const std::shared_ptr<Material>& get_material() const { return m_material; }
+
+    [[nodiscard]] glm::vec3 get_centroid() const { return m_centroid; }
+    [[nodiscard]] float get_radius() const { return m_radius; }
 };
 
 }  // namespace kynetic

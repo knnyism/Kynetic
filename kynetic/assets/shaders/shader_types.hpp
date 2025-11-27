@@ -51,7 +51,6 @@ struct DrawPushConstants
 struct FrustumCullPushConstants
 {
     VkDeviceAddress draw_commands;
-    VkDeviceAddress instances;
     uint32_t draw_count;
 };
 
@@ -73,8 +72,9 @@ struct InstanceData
 {
     column_major float4x4 model;
     column_major float4x4 model_inv;
-
+    float4 position;
     uint32_t material_index;
+    uint32_t pad, pad2, pad3;
 };
 
 struct MaterialData

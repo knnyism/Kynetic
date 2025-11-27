@@ -15,7 +15,7 @@ struct CoarseVertex
 
 struct VertexStageOutput
 {
-    CoarseVertex coarseVertex : CoarseVertex;
+    CoarseVertex coarse_vertex : CoarseVertex;
     float4       sv_position  : SV_Position;
 };
 
@@ -29,8 +29,8 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
 {
     VertexStageOutput output;
 
-    Vertex* vertices = (Vertex*)(constants.vertices);
-    InstanceData* instances = (InstanceData*)(constants.instances);
+    Vertex* vertices = (Vertex*)constants.vertices;
+    InstanceData* instances = (InstanceData*)constants.instances;
 
     Vertex v = vertices[vertex_id];
     InstanceData instance = instances[instance_id];
@@ -38,16 +38,16 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
     float4x4 mvp = mul(scene.vp, instance.model);
     float3x3 model_inv = float3x3(instance.model_inv);
 
-    output.coarseVertex.color = v.color.xyz;
-    output.coarseVertex.uv = float2(v.uv_x, v.uv_y);
+    output.coarse_vertex.color = v.color.xyz;
+    output.coarse_vertex.uv = float2(v.uv_x, v.uv_y);
 
-    output.coarseVertex.tangent = normalize(mul(model_inv, v.tangent.xyz));
-    output.coarseVertex.bitangent = normalize(mul(model_inv, cross(v.normal, v.tangent.xyz) * v.tangent.w)); 
-    output.coarseVertex.normal = normalize(mul(model_inv, v.normal));
+    output.coarse_vertex.tangent = normalize(mul(model_inv, v.tangent.xyz));
+    output.coarse_vertex.bitangent = normalize(mul(model_inv, cross(v.normal, v.tangent.xyz) * v.tangent.w));
+    output.coarse_vertex.normal = normalize(mul(model_inv, v.normal));
 
-    output.coarseVertex.world_position = mul(instance.model, float4(v.position, 1.0)).xyz;
+    output.coarse_vertex.world_position = mul(instance.model, float4(v.position, 1.0)).xyz;
 
-    output.coarseVertex.material_index = instance.material_index;
+    output.coarse_vertex.material_index = instance.material_index;
 
     output.sv_position = mul(mvp, float4(v.position, 1.0));
 
@@ -81,7 +81,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
 {
     Fragment output;
 
-    MaterialData* materials = (MaterialData*)(constants.materials);
+    MaterialData* materials = (MaterialData*)constants.materials;
     MaterialData material = materials[coarse_vertex.material_index];
 
     float3 albedo = textures[material.albedo].Sample(coarse_vertex.uv).xyz;

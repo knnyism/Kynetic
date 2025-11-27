@@ -21,6 +21,40 @@ KX_DISABLE_WARNING_POP
 
 using namespace kynetic;
 
+VkFilter extract_filter(fastgltf::Filter filter)
+{
+    switch (filter)
+    {
+        // nearest samplers
+        case fastgltf::Filter::Nearest:
+        case fastgltf::Filter::NearestMipMapNearest:
+        case fastgltf::Filter::NearestMipMapLinear:
+            return VK_FILTER_NEAREST;
+
+        // linear samplers
+        case fastgltf::Filter::Linear:
+        case fastgltf::Filter::LinearMipMapNearest:
+        case fastgltf::Filter::LinearMipMapLinear:
+        default:
+            return VK_FILTER_LINEAR;
+    }
+}
+
+VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter)
+{
+    switch (filter)
+    {
+        case fastgltf::Filter::NearestMipMapNearest:
+        case fastgltf::Filter::LinearMipMapNearest:
+            return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+        case fastgltf::Filter::NearestMipMapLinear:
+        case fastgltf::Filter::LinearMipMapLinear:
+        default:
+            return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
+}
+
 Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.string())
 {
     constexpr auto options = fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages |
@@ -44,12 +78,16 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
         if (texture) return texture;
 
         fastgltf::Image& image = asset.images[texture_asset.imageIndex.value()];
+        fastgltf::Sampler& sampler = asset.samplers[texture_asset.samplerIndex.value()];
 
-        VkSamplerCreateInfo sampler{
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_NEAREST,
-            .minFilter = VK_FILTER_NEAREST,
-        };
+        VkSamplerCreateInfo sampler_create_info{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr};
+        sampler_create_info.maxLod = VK_LOD_CLAMP_NONE;
+        sampler_create_info.minLod = 0;
+
+        sampler_create_info.magFilter = extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
+        sampler_create_info.minFilter = extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+
+        sampler_create_info.mipmapMode = extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
         int width, height, nrChannels;
         unsigned char* data;
@@ -110,7 +148,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                                                           extent,
                                                           image_format,
                                                           VK_IMAGE_USAGE_SAMPLED_BIT,
-                                                          sampler);
+                                                          sampler_create_info);
 
         stbi_image_free(data);
 
