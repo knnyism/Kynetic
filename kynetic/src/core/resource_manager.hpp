@@ -16,11 +16,14 @@ class ResourceManager
 
     std::vector<std::shared_ptr<class Texture>> m_default_textures;
 
-    AllocatedBuffer m_merged_vertex_buffer;
     AllocatedBuffer m_merged_index_buffer;
-    AllocatedBuffer m_material_buffer;
+    AllocatedBuffer m_merged_position_buffer;
+    AllocatedBuffer m_merged_vertex_buffer;
 
+    VkDeviceAddress m_merged_position_buffer_address;
     VkDeviceAddress m_merged_vertex_buffer_address;
+
+    AllocatedBuffer m_material_buffer;
     VkDeviceAddress m_material_buffer_address;
 
 public:

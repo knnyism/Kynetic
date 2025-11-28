@@ -131,6 +131,7 @@
 // clang-format on
 
 constexpr bool USE_VALIDATION_LAYERS = true;
+constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 4;
 
 struct DeletionQueue
 {

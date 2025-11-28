@@ -60,8 +60,9 @@ ResourceManager::~ResourceManager()
 {
     Device& device = Engine::get().device();
 
-    if (m_merged_vertex_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_vertex_buffer);
     if (m_merged_index_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_index_buffer);
+    if (m_merged_position_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_position_buffer);
+    if (m_merged_vertex_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_vertex_buffer);
     if (m_material_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_material_buffer);
 }
 
@@ -70,6 +71,7 @@ void ResourceManager::refresh_mesh_buffers()
     Device& device = Engine::get().device();
 
     if (m_merged_vertex_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_vertex_buffer);
+    if (m_merged_position_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_position_buffer);
     if (m_merged_index_buffer.buffer != VK_NULL_HANDLE) device.destroy_buffer(m_merged_index_buffer);
 
     size_t total_vertices = 0;
@@ -89,14 +91,26 @@ void ResourceManager::refresh_mesh_buffers()
         total_indices * sizeof(uint32_t),
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
+
+    m_merged_position_buffer = device.create_buffer(
+        total_vertices * sizeof(glm::vec4),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_merged_position_buffer.buffer};
+        m_merged_position_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
     m_merged_vertex_buffer = device.create_buffer(
         total_vertices * sizeof(Vertex),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
-
-    VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                  .buffer = m_merged_vertex_buffer.buffer};
-    m_merged_vertex_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_merged_vertex_buffer.buffer};
+        m_merged_vertex_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
 
     device.immediate_submit(
         [&](const CommandBuffer& cmd)
@@ -104,19 +118,26 @@ void ResourceManager::refresh_mesh_buffers()
             for_each<Mesh>(
                 [&](const std::shared_ptr<Mesh>& mesh)
                 {
-                    VkBufferCopy vertexCopy;
-                    vertexCopy.dstOffset = mesh->m_first_vertex * sizeof(Vertex);
-                    vertexCopy.size = mesh->m_vertex_count * sizeof(Vertex);
-                    vertexCopy.srcOffset = 0;
+                    VkBufferCopy index_copy;
+                    index_copy.dstOffset = mesh->m_first_index * sizeof(uint32_t);
+                    index_copy.size = mesh->m_index_count * sizeof(uint32_t);
+                    index_copy.srcOffset = 0;
 
-                    cmd.copy_buffer(mesh->m_vertex_buffer.buffer, m_merged_vertex_buffer.buffer, 1, &vertexCopy);
+                    cmd.copy_buffer(mesh->m_index_buffer.buffer, m_merged_index_buffer.buffer, 1, &index_copy);
 
-                    VkBufferCopy indexCopy;
-                    indexCopy.dstOffset = mesh->m_first_index * sizeof(uint32_t);
-                    indexCopy.size = mesh->m_index_count * sizeof(uint32_t);
-                    indexCopy.srcOffset = 0;
+                    VkBufferCopy position_copy;
+                    position_copy.dstOffset = mesh->m_first_vertex * sizeof(glm::vec4);
+                    position_copy.size = mesh->m_vertex_count * sizeof(glm::vec4);
+                    position_copy.srcOffset = 0;
 
-                    cmd.copy_buffer(mesh->m_index_buffer.buffer, m_merged_index_buffer.buffer, 1, &indexCopy);
+                    cmd.copy_buffer(mesh->m_position_buffer.buffer, m_merged_position_buffer.buffer, 1, &position_copy);
+
+                    VkBufferCopy vertex_copy;
+                    vertex_copy.dstOffset = mesh->m_first_vertex * sizeof(Vertex);
+                    vertex_copy.size = mesh->m_vertex_count * sizeof(Vertex);
+                    vertex_copy.srcOffset = 0;
+
+                    cmd.copy_buffer(mesh->m_vertex_buffer.buffer, m_merged_vertex_buffer.buffer, 1, &vertex_copy);
                 });
         });
 }

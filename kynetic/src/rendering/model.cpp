@@ -68,6 +68,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
     if (loaded_asset) asset = std::move(loaded_asset.get());
 
     std::vector<uint32_t> indices;
+    std::vector<glm::vec4> positions;
     std::vector<Vertex> vertices;
 
     auto load_texture = [&](const fastgltf::TextureInfo& texture_info, VkFormat image_format) -> std::shared_ptr<Texture>
@@ -183,6 +184,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
         return Engine::get().resources().load<Material>(material_path, albedo, normal, metal_roughness, emissive);
     };
 
+    uint32_t mesh_index = 0;
     std::function<void(size_t, Node&)> traverse_node = [&](const size_t node_index, Node& parent_node)
     {
         auto& asset_node = asset.nodes[node_index];
@@ -207,6 +209,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 auto& p = mesh.primitives[prim_index];
 
                 indices.clear();
+                positions.clear();
                 vertices.clear();
 
                 size_t initial_vtx = vertices.size();
@@ -225,6 +228,7 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 // load vertex positions
                 {
                     fastgltf::Accessor& posAccessor = asset.accessors[p.findAttribute("POSITION")->accessorIndex];
+                    positions.resize(positions.size() + posAccessor.count);
                     vertices.resize(vertices.size() + posAccessor.count);
 
                     fastgltf::iterateAccessorWithIndex<glm::vec3>(asset,
@@ -232,11 +236,11 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                                                                   [&](glm::vec3 v, size_t index)
                                                                   {
                                                                       Vertex newvtx;
-                                                                      newvtx.position = v;
                                                                       newvtx.normal = {1, 0, 0};
                                                                       newvtx.color = glm::vec4{1.f};
                                                                       newvtx.uv_x = 0;
                                                                       newvtx.uv_y = 0;
+                                                                      positions[initial_vtx + index] = glm::vec4(v, 0.f);
                                                                       vertices[initial_vtx + index] = newvtx;
                                                                   });
                 }
@@ -278,9 +282,11 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                     struct Context
                     {
                         std::vector<uint32_t>* indices;
+                        std::vector<glm::vec4>* positions;
                         std::vector<Vertex>* vertices;
                     } userContext;
                     userContext.indices = &indices;
+                    userContext.positions = &positions;
                     userContext.vertices = &vertices;
 
                     SMikkTSpaceInterface mikkTSpaceInterface;
@@ -295,11 +301,11 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                     {
                         const auto* context = static_cast<Context*>(pContext->m_pUserData);
                         const auto& vertexIndex = context->indices->at(static_cast<size_t>(iFace * 3 + iVert));
-                        const auto& vertex = context->vertices->at(vertexIndex);
+                        const auto& position = context->positions->at(vertexIndex);
 
-                        fvPosOut[0] = vertex.position.x;
-                        fvPosOut[1] = vertex.position.y;
-                        fvPosOut[2] = vertex.position.z;
+                        fvPosOut[0] = position.x;
+                        fvPosOut[1] = position.y;
+                        fvPosOut[2] = position.z;
                     };
                     mikkTSpaceInterface.m_getNormal =
                         [](SMikkTSpaceContext const* pContext, float* fvNormOut, int iFace, int iVert)
@@ -354,7 +360,9 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
                 }
 
                 node.meshes.push_back(Engine::get().resources().load<Mesh>(path / "mesh" / name / std::to_string(prim_index),
+                                                                           mesh_index++,
                                                                            indices,
+                                                                           positions,
                                                                            vertices,
                                                                            load_material(p.materialIndex.value())));
             }

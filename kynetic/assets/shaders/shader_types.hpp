@@ -33,19 +33,20 @@ enum class RenderChannel
 
 struct Vertex
 {
-    float3 position;
-    float uv_x;
     float3 normal;
-    float uv_y;
+    float uv_x;
     float4 color;
     float4 tangent;
+    float uv_y;
 };
 
 struct DrawPushConstants
 {
+    VkDeviceAddress positions;
     VkDeviceAddress vertices;
-    VkDeviceAddress instances;
     VkDeviceAddress materials;
+
+    VkDeviceAddress instances;
 };
 
 struct FrustumCullPushConstants
@@ -81,4 +82,18 @@ struct MaterialData
     uint32_t normal;
     uint32_t metal_rough;
     uint32_t emissive;
+};
+
+struct MeshletData
+{
+    float3 center;
+    float radius;
+
+    int8_t cone_axis[3];
+    int8_t cone_cutoff;
+
+    uint32_t data_offset;
+    uint32_t mesh_index;
+    uint8_t vertex_count;
+    uint8_t triangle_count;
 };

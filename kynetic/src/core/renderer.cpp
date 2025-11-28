@@ -121,8 +121,9 @@ void Renderer::render()
         ctx.dcb.bind_pipeline(m_lit_pipeline.get());
 
         DrawPushConstants push_constants;
-        push_constants.instances = scene.get_instance_buffer_address();
+        push_constants.positions = resources.m_merged_position_buffer_address;
         push_constants.vertices = resources.m_merged_vertex_buffer_address;
+        push_constants.instances = scene.get_instance_buffer_address();
         push_constants.materials = resources.m_material_buffer_address;
         ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                    sizeof(DrawPushConstants),

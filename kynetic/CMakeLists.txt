@@ -144,6 +144,14 @@ add_library(mikktspace STATIC
 )
 target_include_directories(mikktspace PUBLIC ${mikktspace_SOURCE_DIR})
 
+# meshoptimizer
+FetchContent_Declare(
+        meshoptimizer
+        GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+        GIT_TAG v0.25
+)
+FetchContent_MakeAvailable(meshoptimizer)
+
 # slang
 if (WIN32)
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -261,6 +269,7 @@ target_link_libraries(kynetic PUBLIC
         flecs::flecs_static
         magic_enum::magic_enum
         mikktspace
+        meshoptimizer
 )
 
 target_compile_features(kynetic PUBLIC cxx_std_20)

@@ -29,10 +29,14 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
 {
     VertexStageOutput output;
 
+    float4* positions = (float4*)constants.positions;
     Vertex* vertices = (Vertex*)constants.vertices;
+
     InstanceData* instances = (InstanceData*)constants.instances;
 
+    float3 position = positions[vertex_id].xyz;
     Vertex v = vertices[vertex_id];
+
     InstanceData instance = instances[instance_id];
 
     float4x4 mvp = mul(scene.vp, instance.model);
@@ -45,11 +49,11 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
     output.coarse_vertex.bitangent = normalize(mul(model_inv, cross(v.normal, v.tangent.xyz) * v.tangent.w));
     output.coarse_vertex.normal = normalize(mul(model_inv, v.normal));
 
-    output.coarse_vertex.world_position = mul(instance.model, float4(v.position, 1.0)).xyz;
+    output.coarse_vertex.world_position = mul(instance.model, float4(position, 1.0)).xyz;
 
     output.coarse_vertex.material_index = instance.material_index;
 
-    output.sv_position = mul(mvp, float4(v.position, 1.0));
+    output.sv_position = mul(mvp, float4(position, 1.0));
 
     return output;
 }
@@ -82,6 +86,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
     Fragment output;
 
     MaterialData* materials = (MaterialData*)constants.materials;
+
     MaterialData material = materials[coarse_vertex.material_index];
 
     float3 albedo = textures[material.albedo].Sample(coarse_vertex.uv).xyz;

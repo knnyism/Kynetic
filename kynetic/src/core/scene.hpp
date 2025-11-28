@@ -18,18 +18,18 @@ class Scene
     std::shared_ptr<class Shader> m_cull_shader;
     std::unique_ptr<class Pipeline> m_cull_pipeline;
 
-    AllocatedBuffer m_instances_buffers[4]{VK_NULL_HANDLE};
-    AllocatedBuffer m_draw_buffers[4]{VK_NULL_HANDLE};
-    AllocatedBuffer m_scene_buffers[4]{VK_NULL_HANDLE};
-
-    VkDeviceAddress m_instances_buffer_address{0};
-    VkDeviceAddress m_draw_buffer_address{0};
-    VkDeviceAddress m_scene_buffer_address{0};
-
     std::vector<InstanceData> m_instances;
+    AllocatedBuffer m_instances_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_instances_buffer_address{0};
+
     std::vector<VkDrawIndexedIndirectCommand> m_draws;
+    AllocatedBuffer m_draw_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_draw_buffer_address{0};
 
     SceneData m_scene_data;
+    AllocatedBuffer m_scene_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_scene_buffer_address{0};
+
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
 
