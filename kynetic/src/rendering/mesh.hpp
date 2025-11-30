@@ -16,6 +16,7 @@ class Mesh : public Resource
     AllocatedBuffer m_index_buffer;
     AllocatedBuffer m_position_buffer;
     AllocatedBuffer m_vertex_buffer;
+    AllocatedBuffer m_meshlet_buffer;
 
     uint32_t m_mesh_index;
 
@@ -25,17 +26,18 @@ class Mesh : public Resource
     uint32_t m_first_vertex{0};
     uint32_t m_vertex_count{0};
 
+    size_t m_meshlet_count{0};
+
     VkIndexType m_index_type{VK_INDEX_TYPE_UINT32};
 
     VkDeviceAddress m_position_buffer_address;
     VkDeviceAddress m_vertex_buffer_address;
+    VkDeviceAddress m_meshlet_buffer_address;
 
     std::shared_ptr<class Material> m_material;
 
     glm::vec3 m_centroid{0.f};
     float m_radius{0.0f};
-
-    void build_meshlets(const std::span<uint32_t>& span, const std::span<glm::vec4>& positions);
 
 public:
     Mesh(const std::filesystem::path& path,
@@ -44,6 +46,7 @@ public:
          std::span<glm::vec4> positions,
          std::span<Vertex> vertices,
          std::shared_ptr<Material> material);
+    void calculate_bounds(const std::span<glm::vec4>& positions);
     ~Mesh() override;
 
     [[nodiscard]] const VkBuffer& get_indices() const { return m_index_buffer.buffer; }
