@@ -59,6 +59,7 @@ Device::Device()
     features_12.descriptorBindingSampledImageUpdateAfterBind = true;
     features_12.descriptorBindingVariableDescriptorCount = true;
     features_12.runtimeDescriptorArray = true;
+    features_12.shaderInt8 = true;
 
     VkPhysicalDeviceVulkan13Features features_13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features_13.dynamicRendering = true;

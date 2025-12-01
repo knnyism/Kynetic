@@ -2,6 +2,29 @@
 
 static constexpr float PI = 3.14159265358979323846f;
 static constexpr float EPSILON = 1e-6f;
+static constexpr float GOLDEN_RATIO = 0.618033988749895f;
+
+float3 get_pastel_color(uint index)
+{
+    float hue = frac(float(index) * GOLDEN_RATIO);
+    float saturation = 0.4f + 0.2f * frac(float(index) * 0.317f);
+    float value = 0.85f + 0.15f * frac(float(index) * 0.513f);
+
+    float h = hue * 6.0f;
+    float c = value * saturation;
+    float x = c * (1.0f - abs(fmod(h, 2.0f) - 1.0f));
+    float m = value - c;
+
+    float3 rgb;
+    if (h < 1.0f) rgb = float3(c, x, 0.0f);
+    else if (h < 2.0f) rgb = float3(x, c, 0.0f);
+    else if (h < 3.0f) rgb = float3(0.0f, c, x);
+    else if (h < 4.0f) rgb = float3(0.0f, x, c);
+    else if (h < 5.0f) rgb = float3(x, 0.0f, c);
+    else rgb = float3(c, 0.0f, x);
+
+    return rgb + float3(m, m, m);
+}
 
 float ggx(const float roughness, const float n_dot_h)
 {

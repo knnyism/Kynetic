@@ -143,6 +143,7 @@ void Scene::update()
 
     m_draws.clear();
     m_instances.clear();
+    m_meshlet_draws.clear();
 
     Mesh* last_mesh = nullptr;
     m_scene.query_builder<TransformComponent, MeshComponent>()
@@ -159,12 +160,16 @@ void Scene::update()
                 float max_scale =
                     glm::max(glm::length(glm::vec3(t.transform[0])),
                              glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
+                
+                uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
+                
                 InstanceData& instance = m_instances.emplace_back();
                 instance.model = t.transform;
                 instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
                 instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
                 instance.material_index = m.mesh->get_material()->get_handle();
+
+                m_meshlet_draws.push_back({m.mesh, instance_index});
 
                 if (last_mesh == m.mesh.get())
                 {
@@ -190,7 +195,7 @@ void Scene::update()
         .vp = m_projection * m_view,
         .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
         .sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f),
-        .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 5.f,
+        .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 2.5f,
     };
 
     update_buffers();

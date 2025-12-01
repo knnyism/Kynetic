@@ -11,6 +11,7 @@
 #include "rendering/pipeline.hpp"
 #include "rendering/shader.hpp"
 #include "rendering/texture.hpp"
+#include "rendering/mesh.hpp"
 
 #include "renderer.hpp"
 
@@ -42,13 +43,16 @@ Renderer::Renderer()
                                                          .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                                                          .set_polygon_mode(VK_POLYGON_MODE_FILL)
                                                          .set_color_attachment_format(m_render_target.format)
+                                                         .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
                                                          .set_depth_format(m_depth_render_target.format)
-                                                         .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+                                                         .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
                                                          .set_multisampling_none()
-                                                         .disable_depthtest()
                                                          .disable_blending()
                                                          .set_shader(m_mesh_lit_shader)
                                                          .build(device));
+
+    m_clear_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/clear.slang");
+    m_clear_pipeline = std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_clear_shader).build(device));
 }
 
 Renderer::~Renderer()
@@ -110,7 +114,27 @@ void Renderer::render()
         init_render_target();
     }
 
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    ctx.dcb.bind_pipeline(m_clear_pipeline.get());
+    {
+        VkDescriptorSet image_descriptor = ctx.allocator.allocate(m_clear_pipeline->get_set_layout(0));
+        {
+            DescriptorWriter writer;
+            writer.write_image(0,
+                               m_render_target.view,
+                               VK_NULL_HANDLE,
+                               VK_IMAGE_LAYOUT_GENERAL,
+                               VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+            writer.update_set(device.get(), image_descriptor);
+        }
+        ctx.dcb.bind_descriptors(image_descriptor);
+    }
+    ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.width) / 16.0f)),
+                     static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.height) / 16.0f)),
+                     1);
+
+    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     const VkExtent2D draw_extent = {
@@ -161,6 +185,42 @@ void Renderer::render()
         else if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
         {
             ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
+
+            VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_mesh_lit_pipeline->get_set_layout(0));
+            {
+                DescriptorWriter writer;
+                writer.write_buffer(0,
+                                    scene.get_scene_buffer().buffer,
+                                    sizeof(SceneData),
+                                    0,
+                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                writer.update_set(device.get(), scene_descriptor);
+            }
+            ctx.dcb.bind_descriptors(scene_descriptor);
+            ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
+
+            const auto& meshlet_draws = scene.get_meshlet_draws();
+            for (const auto& meshlet_draw : meshlet_draws)
+            {
+                const auto& mesh = meshlet_draw.mesh;
+
+                MeshDrawPushConstants push_constants{};
+                push_constants.positions = mesh->get_position_buffer_address();
+                push_constants.vertices = mesh->get_vertex_buffer_address();
+                push_constants.meshlets = mesh->get_meshlet_buffer_address();
+                push_constants.meshlet_vertices = mesh->get_meshlet_vertices_buffer_address();
+                push_constants.meshlet_triangles = mesh->get_meshlet_triangles_buffer_address();
+                push_constants.instances =
+                    scene.get_instance_buffer_address() + meshlet_draw.instance_index * sizeof(InstanceData);
+                push_constants.materials = resources.m_material_buffer_address;
+                push_constants.meshlet_count = static_cast<uint32_t>(mesh->get_meshlet_count());
+
+                ctx.dcb.set_push_constants(VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                           sizeof(MeshDrawPushConstants),
+                                           &push_constants);
+
+                ctx.dcb.draw_mesh_tasks(static_cast<uint32_t>(mesh->get_meshlet_count()), 1, 1);
+            }
         }
 
         scene.draw(m_rendering_method);

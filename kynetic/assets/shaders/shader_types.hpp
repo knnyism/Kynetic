@@ -43,10 +43,14 @@ struct Vertex
 
 struct MeshDrawPushConstants
 {
-    VkDeviceAddress indices;
     VkDeviceAddress positions;
+    VkDeviceAddress vertices;
     VkDeviceAddress meshlets;
+    VkDeviceAddress meshlet_vertices;
+    VkDeviceAddress meshlet_triangles;
     VkDeviceAddress instances;
+    VkDeviceAddress materials;
+    uint32_t meshlet_count;
 };
 
 struct DrawPushConstants

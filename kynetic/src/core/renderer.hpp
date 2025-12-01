@@ -16,9 +16,11 @@ class Renderer
 
     DeletionQueue m_deletion_queue;
 
+    std::shared_ptr<class Shader> m_clear_shader;
     std::shared_ptr<class Shader> m_lit_shader;
     std::shared_ptr<class Shader> m_mesh_lit_shader;
 
+    std::unique_ptr<class Pipeline> m_clear_pipeline;
     std::unique_ptr<class Pipeline> m_lit_pipeline;
     std::unique_ptr<class Pipeline> m_mesh_lit_pipeline;
 

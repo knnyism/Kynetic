@@ -17,6 +17,8 @@ class Mesh : public Resource
     AllocatedBuffer m_position_buffer;
     AllocatedBuffer m_vertex_buffer;
     AllocatedBuffer m_meshlet_buffer;
+    AllocatedBuffer m_meshlet_vertices_buffer;
+    AllocatedBuffer m_meshlet_triangles_buffer;
 
     uint32_t m_mesh_index;
 
@@ -34,6 +36,8 @@ class Mesh : public Resource
     VkDeviceAddress m_position_buffer_address;
     VkDeviceAddress m_vertex_buffer_address;
     VkDeviceAddress m_meshlet_buffer_address;
+    VkDeviceAddress m_meshlet_vertices_buffer_address;
+    VkDeviceAddress m_meshlet_triangles_buffer_address;
 
     std::shared_ptr<class Material> m_material;
 
@@ -60,10 +64,14 @@ public:
     [[nodiscard]] uint32_t get_vertex_offset() const { return m_first_vertex; }
     [[nodiscard]] uint32_t get_vertex_count() const { return m_vertex_count; }
 
+    [[nodiscard]] size_t get_meshlet_count() const { return m_meshlet_count; }
+
     [[nodiscard]] VkDeviceAddress get_index_buffer_address() const { return m_index_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_position_buffer_address() const { return m_position_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_vertex_buffer_address() const { return m_vertex_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_meshlet_buffer_address() const { return m_meshlet_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_meshlet_vertices_buffer_address() const { return m_meshlet_vertices_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_meshlet_triangles_buffer_address() const { return m_meshlet_triangles_buffer_address; }
 
     [[nodiscard]] const std::shared_ptr<Material>& get_material() const { return m_material; }
 

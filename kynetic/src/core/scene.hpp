@@ -7,6 +7,12 @@
 namespace kynetic
 {
 
+struct MeshletDrawInfo
+{
+    std::shared_ptr<class Mesh> mesh;
+    uint32_t instance_index;
+};
+
 class Scene
 {
     friend class Engine;
@@ -25,6 +31,8 @@ class Scene
     std::vector<VkDrawIndexedIndirectCommand> m_draws;
     AllocatedBuffer m_draw_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
     VkDeviceAddress m_draw_buffer_address{0};
+
+    std::vector<MeshletDrawInfo> m_meshlet_draws;
 
     SceneData m_scene_data;
     AllocatedBuffer m_scene_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
@@ -53,6 +61,8 @@ public:
 
     [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draws() const { return m_draws; }
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draws.size()); }
+
+    [[nodiscard]] const std::vector<MeshletDrawInfo>& get_meshlet_draws() const { return m_meshlet_draws; }
 
     [[nodiscard]] VkDeviceAddress get_instance_buffer_address() const { return m_instances_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_scene_buffer_address() const { return m_scene_buffer_address; }

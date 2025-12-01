@@ -92,6 +92,8 @@ Mesh::Mesh(const std::filesystem::path& path,
     const size_t vertex_buffer_size = vertices.size_bytes();
 
     const size_t meshlet_buffer_size = meshlets_data.size() * sizeof(MeshletData);
+    const size_t meshlet_vertices_buffer_size = meshlet_vertex_indices.size() * sizeof(uint32_t);
+    const size_t meshlet_triangles_buffer_size = meshlet_triangles.size() * sizeof(uint8_t);
 
     m_index_buffer = device.create_buffer(
         index_buffer_size,
@@ -135,51 +137,102 @@ Mesh::Mesh(const std::filesystem::path& path,
         m_meshlet_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
     }
 
+    m_meshlet_vertices_buffer =
+        device.create_buffer(meshlet_vertices_buffer_size,
+                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                             VMA_MEMORY_USAGE_GPU_ONLY);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_meshlet_vertices_buffer.buffer};
+        m_meshlet_vertices_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
+    m_meshlet_triangles_buffer =
+        device.create_buffer(meshlet_triangles_buffer_size,
+                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                             VMA_MEMORY_USAGE_GPU_ONLY);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_meshlet_triangles_buffer.buffer};
+        m_meshlet_triangles_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
+    const size_t total_staging_size = index_buffer_size + position_buffer_size + vertex_buffer_size + meshlet_buffer_size +
+                                      meshlet_vertices_buffer_size + meshlet_triangles_buffer_size;
+
     AllocatedBuffer staging =
-        device.create_buffer(index_buffer_size + position_buffer_size + vertex_buffer_size + meshlet_buffer_size,
-                                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                                   VMA_MEMORY_USAGE_CPU_ONLY);
+        device.create_buffer(total_staging_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     void* data;
     vmaMapMemory(device.get_allocator(), staging.allocation, &data);
-    memcpy(data, indices.data(), index_buffer_size);
-    memcpy(static_cast<char*>(data) + index_buffer_size, positions.data(), position_buffer_size);
-    memcpy(static_cast<char*>(data) + index_buffer_size + position_buffer_size, vertices.data(), vertex_buffer_size);
-    memcpy(static_cast<char*>(data) + index_buffer_size + position_buffer_size + vertex_buffer_size,
-           meshlets_data.data(),
-           meshlet_buffer_size);
+
+    size_t offset = 0;
+    memcpy(static_cast<char*>(data) + offset, indices.data(), index_buffer_size);
+    offset += index_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, positions.data(), position_buffer_size);
+    offset += position_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, vertices.data(), vertex_buffer_size);
+    offset += vertex_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, meshlets_data.data(), meshlet_buffer_size);
+    offset += meshlet_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, meshlet_vertex_indices.data(), meshlet_vertices_buffer_size);
+    offset += meshlet_vertices_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, meshlet_triangles.data(), meshlet_triangles_buffer_size);
+
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
     device.immediate_submit(
         [&](const CommandBuffer& cmd)
         {
+            size_t src_offset = 0;
+
             VkBufferCopy index_copy{};
             index_copy.dstOffset = 0;
-            index_copy.srcOffset = 0;
+            index_copy.srcOffset = src_offset;
             index_copy.size = index_buffer_size;
-
             cmd.copy_buffer(staging.buffer, m_index_buffer.buffer, 1, &index_copy);
+            src_offset += index_buffer_size;
 
             VkBufferCopy position_copy{};
             position_copy.dstOffset = 0;
-            position_copy.srcOffset = index_buffer_size;
+            position_copy.srcOffset = src_offset;
             position_copy.size = position_buffer_size;
-
             cmd.copy_buffer(staging.buffer, m_position_buffer.buffer, 1, &position_copy);
+            src_offset += position_buffer_size;
 
             VkBufferCopy vertex_copy{};
             vertex_copy.dstOffset = 0;
-            vertex_copy.srcOffset = index_buffer_size + position_buffer_size;
+            vertex_copy.srcOffset = src_offset;
             vertex_copy.size = vertex_buffer_size;
-
             cmd.copy_buffer(staging.buffer, m_vertex_buffer.buffer, 1, &vertex_copy);
+            src_offset += vertex_buffer_size;
 
             VkBufferCopy meshlet_copy{};
             meshlet_copy.dstOffset = 0;
-            meshlet_copy.srcOffset = index_buffer_size + position_buffer_size + vertex_buffer_size;
+            meshlet_copy.srcOffset = src_offset;
             meshlet_copy.size = meshlet_buffer_size;
-
             cmd.copy_buffer(staging.buffer, m_meshlet_buffer.buffer, 1, &meshlet_copy);
+            src_offset += meshlet_buffer_size;
+
+            VkBufferCopy meshlet_vertices_copy{};
+            meshlet_vertices_copy.dstOffset = 0;
+            meshlet_vertices_copy.srcOffset = src_offset;
+            meshlet_vertices_copy.size = meshlet_vertices_buffer_size;
+            cmd.copy_buffer(staging.buffer, m_meshlet_vertices_buffer.buffer, 1, &meshlet_vertices_copy);
+            src_offset += meshlet_vertices_buffer_size;
+
+            VkBufferCopy meshlet_triangles_copy{};
+            meshlet_triangles_copy.dstOffset = 0;
+            meshlet_triangles_copy.srcOffset = src_offset;
+            meshlet_triangles_copy.size = meshlet_triangles_buffer_size;
+            cmd.copy_buffer(staging.buffer, m_meshlet_triangles_buffer.buffer, 1, &meshlet_triangles_copy);
         });
 
     device.destroy_buffer(staging);
@@ -194,6 +247,8 @@ Mesh::~Mesh()
     device.destroy_buffer(m_position_buffer);
 
     device.destroy_buffer(m_meshlet_buffer);
+    device.destroy_buffer(m_meshlet_vertices_buffer);
+    device.destroy_buffer(m_meshlet_triangles_buffer);
 }
 
 void Mesh::calculate_bounds(const std::span<glm::vec4>& positions)
