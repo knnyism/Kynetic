@@ -30,7 +30,7 @@ public:
 
         m_camera = scene.add_camera(true);
 
-        m_model = scene.add_model(resources.load<kynetic::Model>("assets/shared_assets/models/sponza/Sponza.gltf"));
+        m_model = scene.add_model(resources.load<kynetic::Model>("assets/shared_assets/models/DamagedHelmet.glb"));
 
         resources.refresh_mesh_buffers();
         resources.refresh_bindless_textures();

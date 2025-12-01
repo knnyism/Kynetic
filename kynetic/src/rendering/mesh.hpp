@@ -30,6 +30,7 @@ class Mesh : public Resource
 
     VkIndexType m_index_type{VK_INDEX_TYPE_UINT32};
 
+    VkDeviceAddress m_index_buffer_address;
     VkDeviceAddress m_position_buffer_address;
     VkDeviceAddress m_vertex_buffer_address;
     VkDeviceAddress m_meshlet_buffer_address;
@@ -59,8 +60,10 @@ public:
     [[nodiscard]] uint32_t get_vertex_offset() const { return m_first_vertex; }
     [[nodiscard]] uint32_t get_vertex_count() const { return m_vertex_count; }
 
+    [[nodiscard]] VkDeviceAddress get_index_buffer_address() const { return m_index_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_position_buffer_address() const { return m_position_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_vertex_buffer_address() const { return m_vertex_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_meshlet_buffer_address() const { return m_meshlet_buffer_address; }
 
     [[nodiscard]] const std::shared_ptr<Material>& get_material() const { return m_material; }
 

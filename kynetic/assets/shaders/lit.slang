@@ -16,7 +16,7 @@ struct CoarseVertex
 struct VertexStageOutput
 {
     CoarseVertex coarse_vertex : CoarseVertex;
-    float4       sv_position  : SV_Position;
+    float4       sv_position   : SV_Position;
 };
 
 ConstantBuffer<SceneData>               scene;

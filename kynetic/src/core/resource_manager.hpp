@@ -11,6 +11,7 @@ class ResourceManager
 {
     friend class Engine;
     friend class Renderer;
+    friend class Scene;
 
     std::unordered_map<size_t, std::shared_ptr<Resource>> m_resources;
 
@@ -20,6 +21,7 @@ class ResourceManager
     AllocatedBuffer m_merged_position_buffer;
     AllocatedBuffer m_merged_vertex_buffer;
 
+    VkDeviceAddress m_merged_index_buffer_address;
     VkDeviceAddress m_merged_position_buffer_address;
     VkDeviceAddress m_merged_vertex_buffer_address;
 

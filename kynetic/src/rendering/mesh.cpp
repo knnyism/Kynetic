@@ -70,10 +70,6 @@ Mesh::Mesh(const std::filesystem::path& path,
 
         MeshletData& meshlet_data = meshlets_data.emplace_back();
 
-        meshlet_data.data_offset = static_cast<uint32_t>(meshlets_data.size());
-        meshlet_data.vertex_count = static_cast<uint8_t>(meshlet.vertex_count);
-        meshlet_data.triangle_count = static_cast<uint8_t>(meshlet.triangle_count);
-
         meshlet_data.center = glm::vec3(meshlet_bounds.center[0], meshlet_bounds.center[1], meshlet_bounds.center[2]);
         meshlet_data.radius = meshlet_bounds.radius;
 
@@ -82,7 +78,11 @@ Mesh::Mesh(const std::filesystem::path& path,
         meshlet_data.cone_axis[2] = meshlet_bounds.cone_axis_s8[2];
 
         meshlet_data.cone_cutoff = meshlet_bounds.cone_cutoff_s8;
-        meshlet_data.mesh_index = m_mesh_index;
+        
+        meshlet_data.vertex_offset = meshlet.vertex_offset;
+        meshlet_data.triangle_offset = meshlet.triangle_offset;
+        meshlet_data.vertex_count = static_cast<uint8_t>(meshlet.vertex_count);
+        meshlet_data.triangle_count = static_cast<uint8_t>(meshlet.triangle_count);
     }
 
     Device& device = Engine::get().device();
@@ -95,8 +95,15 @@ Mesh::Mesh(const std::filesystem::path& path,
 
     m_index_buffer = device.create_buffer(
         index_buffer_size,
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                                              VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_index_buffer.buffer};
+        m_index_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
 
     m_position_buffer = device.create_buffer(position_buffer_size,
                                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
