@@ -8,6 +8,16 @@ find_package(Vulkan REQUIRED)
 
 include(FetchContent)
 
+# Volk
+FetchContent_Declare(
+        volk
+        GIT_REPOSITORY https://github.com/zeux/volk.git
+        GIT_TAG 1.4.304
+)
+set(VOLK_STATIC_DEFINES ON)
+set(VOLK_INSTALL OFF)
+FetchContent_MakeAvailable(volk)
+
 # SDL3
 FetchContent_Declare(
         sdl3
@@ -26,6 +36,7 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
         GIT_TAG v1.4.319
 )
+# set(VK_BOOTSTRAP_VULKAN_HEADER_DIR ${Vulkan_INCLUDE_DIRS})
 FetchContent_MakeAvailable(vk-bootstrap)
 
 # vma (Vulkan Memory Allocator)
@@ -65,11 +76,13 @@ target_include_directories(imgui PUBLIC
 
 target_compile_definitions(imgui PUBLIC
         IMGUI_DEFINE_MATH_OPERATORS
+        VK_NO_PROTOTYPES
 )
 
 target_link_libraries(imgui PUBLIC
         SDL3::SDL3
-        Vulkan::Vulkan
+        Vulkan::Headers
+        volk
 )
 
 # glm
@@ -259,6 +272,7 @@ target_link_libraries(kynetic PUBLIC
         vk-bootstrap
         vk-bootstrap-compiler-warnings
         Vulkan::Headers
+        volk
         VulkanMemoryAllocator
         imgui
         fastgltf
@@ -284,7 +298,9 @@ target_precompile_headers(kynetic PUBLIC
 )
 
 target_compile_definitions(kynetic PUBLIC
+        VK_NO_PROTOTYPES
         VMA_DYNAMIC_VULKAN_FUNCTIONS
+        VMA_STATIC_VULKAN_FUNCTIONS=0
         GLM_FORCE_DEPTH_ZERO_TO_ONE
         GLM_ENABLE_EXPERIMENTAL
 )

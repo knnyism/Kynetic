@@ -24,18 +24,31 @@ Renderer::Renderer()
 
     init_render_target();
 
+    auto general_builder = GraphicsPipelineBuilder()
+                               .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                               .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                               .set_color_attachment_format(m_render_target.format)
+                               .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                               .set_depth_format(m_depth_render_target.format)
+                               .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                               .set_multisampling_none()
+                               .disable_blending();
+
     m_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/lit.slang");
-    m_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                    .set_shader(m_lit_shader)
-                                                    .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                    .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                    .set_color_attachment_format(m_render_target.format)
-                                                    .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-                                                    .set_depth_format(m_depth_render_target.format)
-                                                    .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
-                                                    .set_multisampling_none()
-                                                    .disable_blending()
-                                                    .build(device));
+    m_lit_pipeline = std::make_unique<Pipeline>(general_builder.set_shader(m_lit_shader).build(device));
+
+    m_mesh_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/mesh_lit.slang");
+    m_mesh_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                                         .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                                         .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                                         .set_color_attachment_format(m_render_target.format)
+                                                         .set_depth_format(m_depth_render_target.format)
+                                                         .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+                                                         .set_multisampling_none()
+                                                         .disable_depthtest()
+                                                         .disable_blending()
+                                                         .set_shader(m_mesh_lit_shader)
+                                                         .build(device));
 }
 
 Renderer::~Renderer()
@@ -118,26 +131,37 @@ void Renderer::render()
         ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
         ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-        ctx.dcb.bind_pipeline(m_lit_pipeline.get());
-
-        DrawPushConstants push_constants;
-        push_constants.positions = resources.m_merged_position_buffer_address;
-        push_constants.vertices = resources.m_merged_vertex_buffer_address;
-        push_constants.instances = scene.get_instance_buffer_address();
-        push_constants.materials = resources.m_material_buffer_address;
-        ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   sizeof(DrawPushConstants),
-                                   &push_constants);
-        ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
-
-        VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_lit_pipeline->get_set_layout(0));
+        if (m_rendering_method == RenderMode::CpuDriven || m_rendering_method == RenderMode::GpuDriven)
         {
-            DescriptorWriter writer;
-            writer.write_buffer(0, scene.get_scene_buffer().buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-            writer.update_set(device.get(), scene_descriptor);
+            ctx.dcb.bind_pipeline(m_lit_pipeline.get());
+
+            DrawPushConstants push_constants;
+            push_constants.positions = resources.m_merged_position_buffer_address;
+            push_constants.vertices = resources.m_merged_vertex_buffer_address;
+            push_constants.instances = scene.get_instance_buffer_address();
+            push_constants.materials = resources.m_material_buffer_address;
+            ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                       sizeof(DrawPushConstants),
+                                       &push_constants);
+            ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
+
+            VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_lit_pipeline->get_set_layout(0));
+            {
+                DescriptorWriter writer;
+                writer.write_buffer(0,
+                                    scene.get_scene_buffer().buffer,
+                                    sizeof(SceneData),
+                                    0,
+                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                writer.update_set(device.get(), scene_descriptor);
+            }
+            ctx.dcb.bind_descriptors(scene_descriptor);
+            ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
         }
-        ctx.dcb.bind_descriptors(scene_descriptor);
-        ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
+        else if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
+        {
+            ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
+        }
 
         scene.draw(m_rendering_method);
     }

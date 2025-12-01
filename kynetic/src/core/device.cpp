@@ -23,6 +23,8 @@ using namespace kynetic;
 
 Device::Device()
 {
+    VK_CHECK(volkInitialize());
+
     SDL_Init(SDL_INIT_VIDEO);
     m_window = SDL_CreateWindow("Kynetic App",
                                 static_cast<int>(m_window_extent.width),
@@ -37,6 +39,8 @@ Device::Device()
                         .build()
                         .value();
     m_instance = instance.instance;
+    volkLoadInstance(m_instance);
+
     m_debug_messenger = instance.debug_messenger;
 
     SDL_Vulkan_CreateSurface(m_window, m_instance, nullptr, &m_surface);
@@ -60,19 +64,26 @@ Device::Device()
     features_13.dynamicRendering = true;
     features_13.synchronization2 = true;
 
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features{.sType =
+                                                                   VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+    mesh_shader_features.meshShader = true;
+    mesh_shader_features.taskShader = true;
+
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
                                               .set_required_features_11(features_11)
                                               .set_required_features_12(features_12)
                                               .set_required_features_13(features_13)
                                               .set_required_features(features)
+                                              .add_required_extension(VK_EXT_MESH_SHADER_EXTENSION_NAME)
                                               .set_surface(m_surface)
                                               .select()
                                               .value();
     m_physical_device = physical_device.physical_device;
 
-    vkb::Device device = vkb::DeviceBuilder(physical_device).build().value();
+    vkb::Device device = vkb::DeviceBuilder(physical_device).add_pNext(&mesh_shader_features).build().value();
     m_device = device.device;
+    volkLoadDevice(m_device);
 
     m_swapchain = std::make_unique<Swapchain>(m_device);
     m_swapchain->init(m_physical_device, m_surface, m_window_extent.width, m_window_extent.height);
@@ -95,8 +106,8 @@ Device::Device()
     }
 
     VmaVulkanFunctions vulkanFunctions = {};
-    vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-    vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
+    vulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+    vulkanFunctions.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo allocator_info = {
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
@@ -150,6 +161,9 @@ Device::Device()
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     ImGui_ImplSDL3_InitForVulkan(m_window);
+    ImGui_ImplVulkan_LoadFunctions(0,
+                                   [](const char* function_name, void*)
+                                   { return vkGetInstanceProcAddr(volkGetLoadedInstance(), function_name); });
 
     ImGui_ImplVulkan_InitInfo init_info = {};
     init_info.Instance = m_instance;

@@ -343,11 +343,12 @@ void Scene::cull(RenderMode render_mode)
         }
         break;
         case RenderMode::GpuDriven:
-        case RenderMode::GpuDrivenMeshlets:
         {
             gpu_cull();
         }
         break;
+        case RenderMode::GpuDrivenMeshlets:
+            break;
     }
 }
 
@@ -370,6 +371,10 @@ void Scene::draw(RenderMode render_mode) const
         }
         break;
         case RenderMode::GpuDrivenMeshlets:
+        {
+            ctx.dcb.draw_mesh_tasks(1, 1, 1);
+        }
+        break;
         default:
             break;
     }

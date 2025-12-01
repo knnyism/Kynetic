@@ -220,3 +220,8 @@ void CommandBuffer::multi_draw_indirect(VkBuffer buffer, uint32_t draw_count, ui
 {
     vkCmdDrawIndexedIndirect(m_command_buffer, buffer, offset, draw_count, stride);
 }
+
+void CommandBuffer::draw_mesh_tasks(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) const
+{
+    vkCmdDrawMeshTasksEXT(m_command_buffer, group_count_x, group_count_y, group_count_z);
+}

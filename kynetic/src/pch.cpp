@@ -10,6 +10,9 @@ KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH
 #include "stb_image.h"
 KX_DISABLE_WARNING_POP
 
+#define VOLK_IMPLEMENTATION
+#include "volk.h"
+
 VkCommandPoolCreateInfo vk_init::command_pool_create_info(const uint32_t queue_family_index,
                                                           const VkCommandPoolCreateFlags flags)
 {

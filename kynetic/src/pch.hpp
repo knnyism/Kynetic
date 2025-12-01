@@ -37,7 +37,7 @@
 #include "slang-com-ptr.h"
 #include "slang-com-helper.h"
 
-#include "vulkan/vulkan.h"
+#include "volk.h"
 #include "vulkan/vk_enum_string_helper.h"
 #include "vma_usage.hpp"
 

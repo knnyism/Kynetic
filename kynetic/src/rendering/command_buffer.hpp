@@ -66,6 +66,7 @@ public:
               int32_t vertex_offset,
               uint32_t first_instance) const;
     void multi_draw_indirect(VkBuffer buffer, uint32_t draw_count, uint32_t stride, VkDeviceSize offset = 0) const;
+    void draw_mesh_tasks(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) const;
 };
 
 }  // namespace kynetic
