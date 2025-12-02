@@ -15,28 +15,85 @@ struct CoarseVertex
     nointerpolation uint meshlet_index;
 };
 
+struct MeshPayload
+{
+    uint meshlet_indices[32];
+};
+
 ConstantBuffer<SceneData>                   scene;
 [[vk::binding(0, 1)]] Sampler2D             textures[];
 [[vk::push_constant]] MeshDrawPushConstants constants;
 
+bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff, float3 camera_position)
+{
+    return dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius;
+}
+
+groupshared MeshPayload payload;
+groupshared uint accepted_count;
+
+[shader("amplification")]
+[numthreads(32, 1, 1)]
+void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThreadID)
+{
+    if (thread_id == 0) accepted_count = 0;
+    GroupMemoryBarrierWithGroupSync();
+
+    InstanceData* instances = (InstanceData*)constants.instances;
+    MeshletData* meshlets = (MeshletData*)constants.meshlets;
+
+    uint meshlet_index = group_id * 32 + thread_id;
+
+    bool accept = false;
+
+    if (meshlet_index < constants.meshlet_count) 
+    {
+        MeshletData meshlet = meshlets[meshlet_index];
+        InstanceData instance = instances[0];
+
+        float4 center = mul(instance.model, float4(meshlet.center, 1.0));
+        float scale_x = length(float3(instance.model[0][0], instance.model[1][0], instance.model[2][0]));
+        float scale_y = length(float3(instance.model[0][1], instance.model[1][1], instance.model[2][1]));
+        float scale_z = length(float3(instance.model[0][2], instance.model[1][2], instance.model[2][2]));
+        float scale = max(scale_x, max(scale_y, scale_z));
+        float radius = meshlet.radius * scale;
+
+        float3 cone_axis = normalize(mul(float3x3(instance.model), float3(int(meshlet.cone_axis[0]) / 127.0,
+                                                                          int(meshlet.cone_axis[1]) / 127.0,
+                                                                          int(meshlet.cone_axis[2]) / 127.0)));
+        float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
+
+        accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, scene.view_inv[3].xyz);
+        accept = accept && is_visible(scene.vp, center.xyz, radius);
+    }
+
+    if (accept) {
+        uint index;
+        InterlockedAdd(accepted_count, 1, index);
+        payload.meshlet_indices[index] = meshlet_index;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (thread_id == 0 && accepted_count > 0) DispatchMesh(accepted_count, 1, 1, payload);
+} 
+
 [shader("mesh")]
 [outputtopology("triangle")]
-[numthreads(128, 1, 1)]
-void mesh_main(out indices uint3 triangles[124], 
-               out vertices CoarseVertex vertices[64],
-               uint group_id: SV_GroupID,
-               uint thread_id: SV_GroupThreadID)
+[numthreads(124, 1, 1)]
+void mesh_main(OutputIndices<uint3, 124> triangles, 
+               OutputVertices<CoarseVertex, 64> vertices,
+               in payload MeshPayload mesh_payload,
+               uint group_id: SV_GroupID, uint thread_id: SV_GroupThreadID)
 {
     uint32_t*       meshlet_vertex_indices = (uint32_t*)constants.meshlet_vertices;
     uint8_t*        meshlet_triangles      = (uint8_t*)constants.meshlet_triangles;
     float4*         positions              = (float4*)constants.positions;
     Vertex*         vertex_data            = (Vertex*)constants.vertices;
-    MeshletData*    meshlets               = (MeshletData*)constants.meshlets;
     InstanceData*   instances              = (InstanceData*)constants.instances;
-
-    uint meshlet_index = group_id;
-    MeshletData meshlet = meshlets[meshlet_index];
+    MeshletData*    meshlets               = (MeshletData*)constants.meshlets;
     
+    uint meshlet_index = mesh_payload.meshlet_indices[group_id];
+    MeshletData meshlet = meshlets[meshlet_index];
     InstanceData instance = instances[0];
     
     float4x4 mvp = mul(scene.vp, instance.model);
@@ -79,23 +136,6 @@ struct Fragment
 {
     float4 color;
 };
-
-float3 evaluate_light(float3 albedo, float3 V, float3 N, float NoV, float NoL, float roughness, float metallic, float3 f0, float3 L, float3 radiance)
-{
-    float3 H = normalize(V + L);
-
-    float NoH = saturate(dot(N, H));
-    float LoH = saturate(dot(L, H));
-
-    float3 F = schlick(f0, LoH);
-    float D = ggx(roughness, NoH);
-    float G = smith_ggx_correlated(NoV, NoL, roughness);
-
-    float3 Fd = albedo * (1.0 - F) * (1.0 - metallic) * lambertian();
-    float3 Fr = F * D * G;
-
-    return (Fd + Fr) * radiance * NoL;
-}
 
 [shader("fragment")]
 Fragment fragment_main(CoarseVertex coarse_vertex) : SV_Target

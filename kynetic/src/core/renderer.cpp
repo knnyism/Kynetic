@@ -215,11 +215,14 @@ void Renderer::render()
                 push_constants.materials = resources.m_material_buffer_address;
                 push_constants.meshlet_count = static_cast<uint32_t>(mesh->get_meshlet_count());
 
-                ctx.dcb.set_push_constants(VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                ctx.dcb.set_push_constants(VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                            sizeof(MeshDrawPushConstants),
                                            &push_constants);
-
-                ctx.dcb.draw_mesh_tasks(static_cast<uint32_t>(mesh->get_meshlet_count()), 1, 1);
+                
+                ctx.dcb.draw_mesh_tasks(
+                    static_cast<uint32_t>(std::ceilf(static_cast<float>(mesh->get_meshlet_count()) / 32.0f)),
+                    1,
+                    1);
             }
         }
 

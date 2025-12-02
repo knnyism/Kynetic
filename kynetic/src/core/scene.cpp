@@ -377,7 +377,6 @@ void Scene::draw(RenderMode render_mode) const
         break;
         case RenderMode::GpuDrivenMeshlets:
         {
-            ctx.dcb.draw_mesh_tasks(1, 1, 1);
         }
         break;
         default:
