@@ -87,11 +87,11 @@ void ResourceManager::refresh_mesh_buffers()
             total_indices += mesh->m_index_count;
         });
 
-    m_merged_index_buffer = device.create_buffer(
-        total_indices * sizeof(uint32_t),
+    m_merged_index_buffer = device.create_buffer(total_indices * sizeof(uint32_t),
                                                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+                                                     VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                                 VMA_MEMORY_USAGE_GPU_ONLY);
     {
         VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
                                                       .buffer = m_merged_index_buffer.buffer};

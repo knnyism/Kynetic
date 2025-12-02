@@ -32,7 +32,7 @@ class Scene
     AllocatedBuffer m_draw_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
     VkDeviceAddress m_draw_buffer_address{0};
 
-    std::vector<MeshletDrawInfo> m_meshlet_draws;
+    std::vector<MeshDrawCommand> m_mesh_draws;
 
     SceneData m_scene_data;
     AllocatedBuffer m_scene_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};

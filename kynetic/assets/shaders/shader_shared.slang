@@ -77,3 +77,8 @@ bool is_visible(float4x4 mat, float3 origin, float radius)
     }
     return true;
 }
+
+bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff, float3 camera_position)
+{
+    return dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius;
+}

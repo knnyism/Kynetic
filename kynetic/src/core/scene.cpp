@@ -142,8 +142,8 @@ void Scene::update()
         });
 
     m_draws.clear();
+    m_mesh_draws.clear();
     m_instances.clear();
-    m_meshlet_draws.clear();
 
     Mesh* last_mesh = nullptr;
     m_scene.query_builder<TransformComponent, MeshComponent>()
@@ -160,16 +160,24 @@ void Scene::update()
                 float max_scale =
                     glm::max(glm::length(glm::vec3(t.transform[0])),
                              glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-                
+
                 uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
-                
+
                 InstanceData& instance = m_instances.emplace_back();
                 instance.model = t.transform;
                 instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
                 instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
                 instance.material_index = m.mesh->get_material()->get_handle();
 
-                m_meshlet_draws.push_back({m.mesh, instance_index});
+                uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
+
+                MeshDrawCommand& mesh_draw = m_mesh_draws.emplace_back();
+                mesh_draw.group_count_x = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
+                mesh_draw.group_count_y = 1;
+                mesh_draw.group_count_z = 1;
+                mesh_draw.instance_index = instance_index;
+                mesh_draw.meshlet_count = meshlet_count;
+                mesh_draw.meshlet_offset = m.mesh->get_meshlet_offset();
 
                 if (last_mesh == m.mesh.get())
                 {

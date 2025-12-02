@@ -12,44 +12,43 @@ struct CoarseVertex
                          
     float3               world_position;
     nointerpolation uint material_index;
-    nointerpolation uint meshlet_index;
 };
 
 struct MeshPayload
 {
     uint meshlet_indices[32];
+    uint instance_index;
 };
 
 ConstantBuffer<SceneData>                   scene;
 [[vk::binding(0, 1)]] Sampler2D             textures[];
 [[vk::push_constant]] MeshDrawPushConstants constants;
 
-bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff, float3 camera_position)
-{
-    return dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius;
-}
-
 groupshared MeshPayload payload;
 groupshared uint accepted_count;
 
 [shader("amplification")]
 [numthreads(32, 1, 1)]
-void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThreadID)
+void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThreadID, uint draw_id: SV_DrawIndex)
 {
     if (thread_id == 0) accepted_count = 0;
     GroupMemoryBarrierWithGroupSync();
 
     InstanceData* instances = (InstanceData*)constants.instances;
-    MeshletData* meshlets = (MeshletData*)constants.meshlets;
+    MeshletData *meshlets = (MeshletData *)constants.meshlets;
+    MeshDrawCommand* draws = (MeshDrawCommand*)constants.draws;
 
-    uint meshlet_index = group_id * 32 + thread_id;
+    MeshDrawCommand draw = draws[draw_id];
+
+    uint local_meshlet_index = group_id * 32 + thread_id;
+    uint global_meshlet_index = draw.meshlet_offset + local_meshlet_index;
 
     bool accept = false;
 
-    if (meshlet_index < constants.meshlet_count) 
+    if (local_meshlet_index < constants.meshlet_count)
     {
-        MeshletData meshlet = meshlets[meshlet_index];
-        InstanceData instance = instances[0];
+        MeshletData meshlet = meshlets[global_meshlet_index];
+        InstanceData instance = instances[draw.instance_index];
 
         float4 center = mul(instance.model, float4(meshlet.center, 1.0));
         float scale_x = length(float3(instance.model[0][0], instance.model[1][0], instance.model[2][0]));
@@ -70,11 +69,14 @@ void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThrea
     if (accept) {
         uint index;
         InterlockedAdd(accepted_count, 1, index);
-        payload.meshlet_indices[index] = meshlet_index;
+        payload.meshlet_indices[index] = global_meshlet_index;
     }
     GroupMemoryBarrierWithGroupSync();
 
-    if (thread_id == 0 && accepted_count > 0) DispatchMesh(accepted_count, 1, 1, payload);
+    if (thread_id == 0 && accepted_count > 0) {
+        payload.instance_index = draw.instance_index;
+        DispatchMesh(accepted_count, 1, 1, payload);
+    }
 } 
 
 [shader("mesh")]
@@ -91,10 +93,12 @@ void mesh_main(OutputIndices<uint3, 124> triangles,
     Vertex*         vertex_data            = (Vertex*)constants.vertices;
     InstanceData*   instances              = (InstanceData*)constants.instances;
     MeshletData*    meshlets               = (MeshletData*)constants.meshlets;
-    
+
     uint meshlet_index = mesh_payload.meshlet_indices[group_id];
+    uint instance_index = mesh_payload.instance_index;
+
     MeshletData meshlet = meshlets[meshlet_index];
-    InstanceData instance = instances[0];
+    InstanceData instance = instances[instance_index];
     
     float4x4 mvp = mul(scene.vp, instance.model);
     float3x3 model_inv = float3x3(instance.model_inv);
@@ -109,7 +113,7 @@ void mesh_main(OutputIndices<uint3, 124> triangles,
         Vertex v = vertex_data[vertex_index];
 
         vertices[thread_id].position = mul(mvp, float4(pos, 1.0));
-        vertices[thread_id].color = v.color.xyz;
+        vertices[thread_id].color = get_pastel_color(meshlet_index);
         vertices[thread_id].uv = float2(v.uv_x, v.uv_y);
         
         vertices[thread_id].tangent = normalize(mul(model_inv, v.tangent.xyz));
@@ -118,7 +122,6 @@ void mesh_main(OutputIndices<uint3, 124> triangles,
         
         vertices[thread_id].world_position = mul(instance.model, float4(pos, 1.0)).xyz;
         vertices[thread_id].material_index = instance.material_index;
-        vertices[thread_id].meshlet_index = meshlet_index;
     }
 
     if (thread_id < meshlet.triangle_count)
@@ -146,7 +149,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex) : SV_Target
     float3 light_color = scene.sun_color.xyz;
 
     float n_dot_l = clamp(dot(coarse_vertex.normal, -scene.sun_direction.xyz), 0.5, 1.0);
-    output.color = float4(get_pastel_color(coarse_vertex.meshlet_index) * light_color * n_dot_l, 1.0);
+    output.color = float4(coarse_vertex.color * light_color * n_dot_l, 1.0);
 
     return output;
 }

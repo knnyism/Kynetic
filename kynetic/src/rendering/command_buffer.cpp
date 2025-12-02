@@ -226,7 +226,10 @@ void CommandBuffer::draw_mesh_tasks(uint32_t group_count_x, uint32_t group_count
     vkCmdDrawMeshTasksEXT(m_command_buffer, group_count_x, group_count_y, group_count_z);
 }
 
-void CommandBuffer::multi_draw_mesh_tasks_indirect(VkBuffer buffer, uint32_t draw_count, uint32_t stride, VkDeviceSize offset) const
+void CommandBuffer::multi_draw_mesh_tasks_indirect(VkBuffer buffer,
+                                                   uint32_t draw_count,
+                                                   uint32_t stride,
+                                                   VkDeviceSize offset) const
 {
     vkCmdDrawMeshTasksIndirectEXT(m_command_buffer, buffer, offset, draw_count, stride);
 }
