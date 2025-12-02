@@ -7,11 +7,10 @@
 namespace kynetic
 {
 
-struct MeshletDrawInfo
-{
-    std::shared_ptr<class Mesh> mesh;
-    uint32_t instance_index;
-};
+struct TransformComponent;
+struct MeshComponent;
+struct CameraComponent;
+struct MainCameraTag;
 
 class Scene
 {
@@ -20,6 +19,11 @@ class Scene
 
     flecs::world m_scene;
     flecs::entity m_root;
+
+    flecs::query<TransformComponent> m_transform_dirty_query;
+    flecs::query<TransformComponent, TransformComponent> m_transform_hierarchy_query;
+    flecs::query<CameraComponent, TransformComponent, MainCameraTag> m_camera_query;
+    flecs::query<TransformComponent, MeshComponent> m_mesh_query;
 
     std::shared_ptr<class Shader> m_cull_shader;
     std::unique_ptr<class Pipeline> m_cull_pipeline;

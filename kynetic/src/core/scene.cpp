@@ -48,6 +48,21 @@ Scene::Scene()
         .event(flecs::OnSet)
         .each([](TransformComponent& transform) { transform.is_dirty = true; });
 
+    m_transform_dirty_query = m_scene.query_builder<TransformComponent>().build();
+
+    m_transform_hierarchy_query =
+        m_scene.query_builder<TransformComponent, TransformComponent>().term_at(1).parent().cascade().build();
+
+    m_camera_query = m_scene.query_builder<CameraComponent, TransformComponent, MainCameraTag>().build();
+
+    m_mesh_query =
+        m_scene.query_builder<TransformComponent, MeshComponent>()
+            .term_at(1)
+            .in()
+            .order_by<MeshComponent>([](flecs::entity_t, const MeshComponent* m1, flecs::entity_t, const MeshComponent* m2)
+                                     { return (m1->mesh.get() > m2->mesh.get()) - (m1->mesh.get() < m2->mesh.get()); })
+            .build();
+
     m_cull_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/cull.slang");
     m_cull_pipeline =
         std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_cull_shader).build(Engine::get().device()));
@@ -109,7 +124,7 @@ void Scene::update()
 {
     Device& device = Engine::get().device();
 
-    m_scene.query_builder<TransformComponent>().each(
+    m_transform_dirty_query.each(
         [](const flecs::entity entity, const TransformComponent& transform)
         {
             if (transform.is_dirty)
@@ -120,7 +135,7 @@ void Scene::update()
                     });
         });
 
-    m_scene.query_builder<TransformComponent, TransformComponent>().term_at(1).parent().cascade().build().each(
+    m_transform_hierarchy_query.each(
         [](TransformComponent& transform, const TransformComponent& transform_parent)
         {
             if (transform.is_dirty)
@@ -133,7 +148,7 @@ void Scene::update()
 
     const float aspect = static_cast<float>(device.get_extent().width) / static_cast<float>(device.get_extent().height);
 
-    m_scene.query_builder<CameraComponent, TransformComponent, MainCameraTag>().build().each(
+    m_camera_query.each(
         [&](const CameraComponent& camera, const TransformComponent& transform, const MainCameraTag&)
         {
             m_view = glm::inverse(transform.transform);
@@ -147,61 +162,55 @@ void Scene::update()
     m_instances.clear();
 
     Mesh* last_mesh = nullptr;
-    m_scene.query_builder<TransformComponent, MeshComponent>()
-        .term_at(1)
-        .in()
-        .order_by<MeshComponent>([](flecs::entity_t, const MeshComponent* m1, flecs::entity_t, const MeshComponent* m2)
-                                 { return (m1->mesh.get() > m2->mesh.get()) - (m1->mesh.get() < m2->mesh.get()); })
-        .build()
-        .each(
-            [&](const TransformComponent& t, const MeshComponent& m)
+    m_mesh_query.each(
+        [&](const TransformComponent& t, const MeshComponent& m)
+        {
+            glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
+
+            float max_scale =
+                glm::max(glm::length(glm::vec3(t.transform[0])),
+                         glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
+
+            uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
+
+            InstanceData& instance = m_instances.emplace_back();
+            instance.model = t.transform;
+            instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
+            instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
+            instance.material_index = m.mesh->get_material()->get_handle();
+
+            uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
+
+            MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
+            draw_data.positions = m.mesh->get_position_buffer_address();
+            draw_data.vertices = m.mesh->get_vertex_buffer_address();
+            draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
+            draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
+            draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
+            draw_data.instance_index = instance_index;
+            draw_data.meshlet_count = meshlet_count;
+
+            VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
+            indirect_cmd.groupCountX = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
+            indirect_cmd.groupCountY = 1;
+            indirect_cmd.groupCountZ = 1;
+
+            if (last_mesh == m.mesh.get())
             {
-                glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
+                m_draws.back().instanceCount++;
+            }
+            else
+            {
+                VkDrawIndexedIndirectCommand& draw = m_draws.emplace_back();
+                draw.firstIndex = m.mesh->get_index_offset();
+                draw.indexCount = m.mesh->get_index_count();
+                draw.firstInstance = static_cast<uint32_t>(m_instances.size() - 1);
+                draw.instanceCount = 1;
+                draw.vertexOffset = static_cast<int32_t>(m.mesh->get_vertex_offset());
 
-                float max_scale =
-                    glm::max(glm::length(glm::vec3(t.transform[0])),
-                             glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
-                uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
-
-                InstanceData& instance = m_instances.emplace_back();
-                instance.model = t.transform;
-                instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
-                instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
-                instance.material_index = m.mesh->get_material()->get_handle();
-
-                uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
-
-                MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
-                draw_data.positions = m.mesh->get_position_buffer_address();
-                draw_data.vertices = m.mesh->get_vertex_buffer_address();
-                draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
-                draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
-                draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
-                draw_data.instance_index = instance_index;
-                draw_data.meshlet_count = meshlet_count;
-
-                VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
-                indirect_cmd.groupCountX = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
-                indirect_cmd.groupCountY = 1;
-                indirect_cmd.groupCountZ = 1;
-
-                if (last_mesh == m.mesh.get())
-                {
-                    m_draws.back().instanceCount++;
-                }
-                else
-                {
-                    VkDrawIndexedIndirectCommand& draw = m_draws.emplace_back();
-                    draw.firstIndex = m.mesh->get_index_offset();
-                    draw.indexCount = m.mesh->get_index_count();
-                    draw.firstInstance = static_cast<uint32_t>(m_instances.size() - 1);
-                    draw.instanceCount = 1;
-                    draw.vertexOffset = static_cast<int32_t>(m.mesh->get_vertex_offset());
-
-                    last_mesh = m.mesh.get();
-                }
-            });
+                last_mesh = m.mesh.get();
+            }
+        });
 
     m_scene_data = SceneData{
         .view = m_view,
