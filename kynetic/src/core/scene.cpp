@@ -142,7 +142,8 @@ void Scene::update()
         });
 
     m_draws.clear();
-    m_mesh_draws.clear();
+    m_mesh_draw_data.clear();
+    m_mesh_indirect_commands.clear();
     m_instances.clear();
 
     Mesh* last_mesh = nullptr;
@@ -171,13 +172,19 @@ void Scene::update()
 
                 uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
 
-                MeshDrawCommand& mesh_draw = m_mesh_draws.emplace_back();
-                mesh_draw.group_count_x = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
-                mesh_draw.group_count_y = 1;
-                mesh_draw.group_count_z = 1;
-                mesh_draw.instance_index = instance_index;
-                mesh_draw.meshlet_count = meshlet_count;
-                mesh_draw.meshlet_offset = m.mesh->get_meshlet_offset();
+                MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
+                draw_data.positions = m.mesh->get_position_buffer_address();
+                draw_data.vertices = m.mesh->get_vertex_buffer_address();
+                draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
+                draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
+                draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
+                draw_data.instance_index = instance_index;
+                draw_data.meshlet_count = meshlet_count;
+
+                VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
+                indirect_cmd.groupCountX = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
+                indirect_cmd.groupCountY = 1;
+                indirect_cmd.groupCountZ = 1;
 
                 if (last_mesh == m.mesh.get())
                 {
@@ -214,13 +221,19 @@ void Scene::update_buffers()
     Device& device = Engine::get().device();
     Context& ctx = device.get_context();
 
+    if (m_instances.empty()) return;
+
     size_t instance_buffer_size = m_instances.size() * sizeof(InstanceData);
     size_t draw_size = m_draws.size() * sizeof(VkDrawIndexedIndirectCommand);
+    size_t mesh_draw_data_size = m_mesh_draw_data.size() * sizeof(MeshDrawData);
+    size_t mesh_indirect_size = m_mesh_indirect_commands.size() * sizeof(VkDrawMeshTasksIndirectCommandEXT);
 
     uint32_t frame_index = device.get_frame_index();
 
     auto& instances_buffer = m_instances_buffers[frame_index];
     auto& draw_buffer = m_draw_buffers[frame_index];
+    auto& mesh_draw_data_buffer = m_mesh_draw_data_buffers[frame_index];
+    auto& mesh_indirect_buffer = m_mesh_indirect_buffers[frame_index];
     auto& scene_buffer = m_scene_buffers[frame_index];
 
     instances_buffer = device.create_buffer(
@@ -247,42 +260,89 @@ void Scene::update_buffers()
         m_draw_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
     }
 
+    mesh_draw_data_buffer = device.create_buffer(
+        mesh_draw_data_size,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(mesh_draw_data_buffer); });
+
+    {
+        const VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                            .buffer = mesh_draw_data_buffer.buffer};
+        m_mesh_draw_data_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
+    mesh_indirect_buffer = device.create_buffer(mesh_indirect_size,
+                                                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                VMA_MEMORY_USAGE_GPU_ONLY);
+    ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(mesh_indirect_buffer); });
+
     scene_buffer = device.create_buffer(sizeof(SceneData),
                                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                         VMA_MEMORY_USAGE_GPU_ONLY);
     ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(scene_buffer); });
 
-    const AllocatedBuffer staging = device.create_buffer(instance_buffer_size + draw_size + sizeof(SceneData),
-                                                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                                         VMA_MEMORY_USAGE_CPU_ONLY);
+    const size_t total_staging_size =
+        instance_buffer_size + draw_size + mesh_draw_data_size + mesh_indirect_size + sizeof(SceneData);
+
+    const AllocatedBuffer staging =
+        device.create_buffer(total_staging_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
 
     void* data;
     vmaMapMemory(device.get_allocator(), staging.allocation, &data);
-    memcpy(data, m_instances.data(), instance_buffer_size);
-    memcpy(static_cast<char*>(data) + instance_buffer_size, m_draws.data(), draw_size);
-    memcpy(static_cast<char*>(data) + instance_buffer_size + draw_size, &m_scene_data, sizeof(SceneData));
+
+    size_t offset = 0;
+    memcpy(static_cast<char*>(data) + offset, m_instances.data(), instance_buffer_size);
+    offset += instance_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, m_draws.data(), draw_size);
+    offset += draw_size;
+
+    memcpy(static_cast<char*>(data) + offset, m_mesh_draw_data.data(), mesh_draw_data_size);
+    offset += mesh_draw_data_size;
+
+    memcpy(static_cast<char*>(data) + offset, m_mesh_indirect_commands.data(), mesh_indirect_size);
+    offset += mesh_indirect_size;
+
+    memcpy(static_cast<char*>(data) + offset, &m_scene_data, sizeof(SceneData));
+
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
+
+    size_t src_offset = 0;
 
     VkBufferCopy instance_copy;
     instance_copy.dstOffset = 0;
-    instance_copy.srcOffset = 0;
+    instance_copy.srcOffset = src_offset;
     instance_copy.size = instance_buffer_size;
-
     ctx.dcb.copy_buffer(staging.buffer, instances_buffer.buffer, 1, &instance_copy);
+    src_offset += instance_buffer_size;
 
     VkBufferCopy draw_copy;
     draw_copy.dstOffset = 0;
-    draw_copy.srcOffset = instance_buffer_size;
+    draw_copy.srcOffset = src_offset;
     draw_copy.size = draw_size;
-
     ctx.dcb.copy_buffer(staging.buffer, draw_buffer.buffer, 1, &draw_copy);
+    src_offset += draw_size;
+
+    VkBufferCopy mesh_draw_data_copy;
+    mesh_draw_data_copy.dstOffset = 0;
+    mesh_draw_data_copy.srcOffset = src_offset;
+    mesh_draw_data_copy.size = mesh_draw_data_size;
+    ctx.dcb.copy_buffer(staging.buffer, mesh_draw_data_buffer.buffer, 1, &mesh_draw_data_copy);
+    src_offset += mesh_draw_data_size;
+
+    VkBufferCopy mesh_indirect_copy;
+    mesh_indirect_copy.dstOffset = 0;
+    mesh_indirect_copy.srcOffset = src_offset;
+    mesh_indirect_copy.size = mesh_indirect_size;
+    ctx.dcb.copy_buffer(staging.buffer, mesh_indirect_buffer.buffer, 1, &mesh_indirect_copy);
+    src_offset += mesh_indirect_size;
 
     VkBufferCopy scene_data_copy;
     scene_data_copy.dstOffset = 0;
-    scene_data_copy.srcOffset = instance_buffer_size + draw_size;
+    scene_data_copy.srcOffset = src_offset;
     scene_data_copy.size = sizeof(SceneData);
-
     ctx.dcb.copy_buffer(staging.buffer, scene_buffer.buffer, 1, &scene_data_copy);
 }
 
@@ -342,6 +402,13 @@ AllocatedBuffer Scene::get_scene_buffer() const
     uint32_t frame_index = device.get_frame_index();
 
     return m_scene_buffers[frame_index];
+}
+
+AllocatedBuffer Scene::get_mesh_indirect_buffer() const
+{
+    const Device& device = Engine::get().device();
+    uint32_t frame_index = device.get_frame_index();
+    return m_mesh_indirect_buffers[frame_index];
 }
 
 void Scene::cull(RenderMode render_mode)

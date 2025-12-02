@@ -40,20 +40,22 @@ struct Vertex
     float uv_y;
 };
 
-struct MeshDrawPushConstants
+struct MeshDrawData
 {
     VkDeviceAddress positions;
     VkDeviceAddress vertices;
-    VkDeviceAddress materials;
-
     VkDeviceAddress meshlets;
     VkDeviceAddress meshlet_vertices;
     VkDeviceAddress meshlet_triangles;
+    uint32_t instance_index;
+    uint32_t meshlet_count;
+};
 
+struct MeshDrawPushConstants
+{
     VkDeviceAddress draws;
     VkDeviceAddress instances;
-
-    uint32_t meshlet_count;
+    VkDeviceAddress materials;
 };
 
 struct DrawPushConstants
@@ -112,15 +114,4 @@ struct MeshletData
     uint32_t triangle_offset;
     uint8_t vertex_count;
     uint8_t triangle_count;
-};
-
-struct MeshDrawCommand
-{
-    uint32_t group_count_x;
-    uint32_t group_count_y;
-    uint32_t group_count_z;
-
-    uint32_t instance_index;
-    uint32_t meshlet_offset;
-    uint32_t meshlet_count;
 };

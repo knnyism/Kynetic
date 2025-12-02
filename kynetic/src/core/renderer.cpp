@@ -162,8 +162,9 @@ void Renderer::render()
             DrawPushConstants push_constants;
             push_constants.positions = resources.m_merged_position_buffer_address;
             push_constants.vertices = resources.m_merged_vertex_buffer_address;
-            push_constants.instances = scene.get_instance_buffer_address();
             push_constants.materials = resources.m_material_buffer_address;
+            push_constants.instances = scene.get_instance_buffer_address();
+
             ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                        sizeof(DrawPushConstants),
                                        &push_constants);
@@ -199,34 +200,20 @@ void Renderer::render()
             ctx.dcb.bind_descriptors(scene_descriptor);
             ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
 
-            const auto& meshlet_draws = scene.get_meshlet_draws();
-            for (const auto& meshlet_draw : meshlet_draws)
-            {
-                const auto& mesh = meshlet_draw.mesh;
+            MeshDrawPushConstants push_constants;
+            push_constants.draws = scene.get_mesh_draw_data_buffer_address();
+            push_constants.materials = resources.m_material_buffer_address;
+            push_constants.instances = scene.get_instance_buffer_address();
 
-                MeshDrawPushConstants push_constants{};
-                push_constants.positions = mesh->get_position_buffer_address();
-                push_constants.vertices = mesh->get_vertex_buffer_address();
-                push_constants.meshlets = mesh->get_meshlet_buffer_address();
-                push_constants.meshlet_vertices = mesh->get_meshlet_vertices_buffer_address();
-                push_constants.meshlet_triangles = mesh->get_meshlet_triangles_buffer_address();
-                push_constants.instances =
-                    scene.get_instance_buffer_address() + meshlet_draw.instance_index * sizeof(InstanceData);
-                push_constants.materials = resources.m_material_buffer_address;
-                push_constants.meshlet_count = static_cast<uint32_t>(mesh->get_meshlet_count());
+            ctx.dcb.set_push_constants(
+                VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                sizeof(MeshDrawPushConstants),
+                &push_constants);
 
-                ctx.dcb.set_push_constants(
-                    VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                    sizeof(MeshDrawPushConstants),
-                    &push_constants);
-
-                ctx.dcb.draw_mesh_tasks(
-                    static_cast<uint32_t>(std::ceilf(static_cast<float>(mesh->get_meshlet_count()) / 32.0f)),
-                    1,
-                    1);
-
-                ctx.dcb.multi_draw_mesh_tasks_indirect();
-            }
+            ctx.dcb.multi_draw_mesh_tasks_indirect(scene.get_mesh_indirect_buffer().buffer,
+                                                   scene.get_mesh_draw_count(),
+                                                   sizeof(VkDrawMeshTasksIndirectCommandEXT),
+                                                   0);
         }
 
         scene.draw(m_rendering_method);

@@ -32,7 +32,12 @@ class Scene
     AllocatedBuffer m_draw_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
     VkDeviceAddress m_draw_buffer_address{0};
 
-    std::vector<MeshDrawCommand> m_mesh_draws;
+    std::vector<MeshDrawData> m_mesh_draw_data;
+    AllocatedBuffer m_mesh_draw_data_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_mesh_draw_data_buffer_address{0};
+
+    std::vector<VkDrawMeshTasksIndirectCommandEXT> m_mesh_indirect_commands;
+    AllocatedBuffer m_mesh_indirect_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
 
     SceneData m_scene_data;
     AllocatedBuffer m_scene_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
@@ -62,14 +67,16 @@ public:
     [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draws() const { return m_draws; }
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draws.size()); }
 
-    [[nodiscard]] const std::vector<MeshletDrawInfo>& get_meshlet_draws() const { return m_meshlet_draws; }
+    [[nodiscard]] uint32_t get_mesh_draw_count() const { return static_cast<uint32_t>(m_mesh_draw_data.size()); }
 
     [[nodiscard]] VkDeviceAddress get_instance_buffer_address() const { return m_instances_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_scene_buffer_address() const { return m_scene_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_mesh_draw_data_buffer_address() const { return m_mesh_draw_data_buffer_address; }
 
     [[nodiscard]] AllocatedBuffer get_instance_buffer() const;
     [[nodiscard]] AllocatedBuffer get_draw_buffer() const;
     [[nodiscard]] AllocatedBuffer get_scene_buffer() const;
+    [[nodiscard]] AllocatedBuffer get_mesh_indirect_buffer() const;
 
     void cull(RenderMode render_mode);
     void draw(RenderMode render_mode) const;

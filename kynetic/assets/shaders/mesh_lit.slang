@@ -17,7 +17,7 @@ struct CoarseVertex
 struct MeshPayload
 {
     uint meshlet_indices[32];
-    uint instance_index;
+    uint draw_index;
 };
 
 ConstantBuffer<SceneData>                   scene;
@@ -34,20 +34,19 @@ void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThrea
     if (thread_id == 0) accepted_count = 0;
     GroupMemoryBarrierWithGroupSync();
 
+    MeshDrawData* draws = (MeshDrawData*)constants.draws;
+    MeshDrawData draw = draws[draw_id];
+
     InstanceData* instances = (InstanceData*)constants.instances;
-    MeshletData *meshlets = (MeshletData *)constants.meshlets;
-    MeshDrawCommand* draws = (MeshDrawCommand*)constants.draws;
+    MeshletData* meshlets = (MeshletData*)draw.meshlets;
 
-    MeshDrawCommand draw = draws[draw_id];
-
-    uint local_meshlet_index = group_id * 32 + thread_id;
-    uint global_meshlet_index = draw.meshlet_offset + local_meshlet_index;
+    uint meshlet_index = group_id * 32 + thread_id;
 
     bool accept = false;
 
-    if (local_meshlet_index < constants.meshlet_count)
+    if (meshlet_index < draw.meshlet_count)
     {
-        MeshletData meshlet = meshlets[global_meshlet_index];
+        MeshletData meshlet = meshlets[meshlet_index];
         InstanceData instance = instances[draw.instance_index];
 
         float4 center = mul(instance.model, float4(meshlet.center, 1.0));
@@ -69,12 +68,12 @@ void amplification_main(uint group_id: SV_GroupID, uint thread_id: SV_GroupThrea
     if (accept) {
         uint index;
         InterlockedAdd(accepted_count, 1, index);
-        payload.meshlet_indices[index] = global_meshlet_index;
+        payload.meshlet_indices[index] = meshlet_index;
     }
     GroupMemoryBarrierWithGroupSync();
 
     if (thread_id == 0 && accepted_count > 0) {
-        payload.instance_index = draw.instance_index;
+        payload.draw_index = draw_id;
         DispatchMesh(accepted_count, 1, 1, payload);
     }
 } 
@@ -87,18 +86,20 @@ void mesh_main(OutputIndices<uint3, 124> triangles,
                in payload MeshPayload mesh_payload,
                uint group_id: SV_GroupID, uint thread_id: SV_GroupThreadID)
 {
-    uint32_t*       meshlet_vertex_indices = (uint32_t*)constants.meshlet_vertices;
-    uint8_t*        meshlet_triangles      = (uint8_t*)constants.meshlet_triangles;
-    float4*         positions              = (float4*)constants.positions;
-    Vertex*         vertex_data            = (Vertex*)constants.vertices;
+    MeshDrawData* draws = (MeshDrawData*)constants.draws;
+    MeshDrawData draw = draws[mesh_payload.draw_index];
+
+    uint32_t*       meshlet_vertex_indices = (uint32_t*)draw.meshlet_vertices;
+    uint8_t*        meshlet_triangles_data = (uint8_t*)draw.meshlet_triangles;
+    float4*         positions              = (float4*)draw.positions;
+    Vertex*         vertex_data            = (Vertex*)draw.vertices;
     InstanceData*   instances              = (InstanceData*)constants.instances;
-    MeshletData*    meshlets               = (MeshletData*)constants.meshlets;
+    MeshletData*    meshlets               = (MeshletData*)draw.meshlets;
 
     uint meshlet_index = mesh_payload.meshlet_indices[group_id];
-    uint instance_index = mesh_payload.instance_index;
 
     MeshletData meshlet = meshlets[meshlet_index];
-    InstanceData instance = instances[instance_index];
+    InstanceData instance = instances[draw.instance_index];
     
     float4x4 mvp = mul(scene.vp, instance.model);
     float3x3 model_inv = float3x3(instance.model_inv);
@@ -128,9 +129,9 @@ void mesh_main(OutputIndices<uint3, 124> triangles,
     {
         uint triangle_offset = meshlet.triangle_offset + thread_id * 3;
         triangles[thread_id] = uint3(
-            meshlet_triangles[triangle_offset + 0],
-            meshlet_triangles[triangle_offset + 1],
-            meshlet_triangles[triangle_offset + 2]
+            meshlet_triangles_data[triangle_offset + 0],
+            meshlet_triangles_data[triangle_offset + 1],
+            meshlet_triangles_data[triangle_offset + 2]
         );
     }
 }
