@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <map>
 #include <ranges>
+#include <algorithm>
 
 #include "flecs.h"
 #include "fmt/core.h"

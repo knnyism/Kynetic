@@ -10,9 +10,12 @@
 #include "core/engine.hpp"
 
 #include "vma_usage.hpp"
-#include <glm/gtx/norm.hpp>
+#include "glm/gtx/norm.hpp"
 
+KX_DISABLE_WARNING_PUSH
+KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH
 #include "meshoptimizer.h"
+KX_DISABLE_WARNING_POP
 
 using namespace kynetic;
 

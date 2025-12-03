@@ -20,7 +20,7 @@ using namespace kynetic;
 bool is_visible(glm::mat4 mat, glm::vec3 origin, float radius)
 {
     std::array<glm::vec4, 6> planes{};
-    for (auto i = 0; i < 3; ++i)
+    for (uint8_t i = 0; i < 3; ++i)
     {
         for (size_t j = 0; j < 2; ++j)
         {
