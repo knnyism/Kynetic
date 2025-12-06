@@ -13,6 +13,7 @@ class Engine
     std::unique_ptr<class ResourceManager> m_resource_manager;
     std::unique_ptr<class Scene> m_scene;
     std::unique_ptr<class Renderer> m_renderer;
+    std::unique_ptr<class DebugRenderer> m_debug_renderer;
 
     bool is_shutting_down{false};
 
@@ -34,6 +35,8 @@ public:
     [[nodiscard]] Input& input() const { return *m_input; }
     [[nodiscard]] ResourceManager& resources() const { return *m_resource_manager; }
     [[nodiscard]] Scene& scene() const { return *m_scene; }
+
+    [[nodiscard]] DebugRenderer& debug() const { return *m_debug_renderer; }
 
     void init();
     void shutdown();

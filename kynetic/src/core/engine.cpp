@@ -7,6 +7,7 @@
 #include "resource_manager.hpp"
 #include "scene.hpp"
 #include "renderer.hpp"
+#include "debug_renderer.hpp"
 
 #include "engine.hpp"
 
@@ -24,6 +25,7 @@ Engine::Engine()
     m_resource_manager = std::make_unique<ResourceManager>();
     m_scene = std::make_unique<Scene>();
     m_renderer = std::make_unique<Renderer>();
+    m_debug_renderer = std::make_unique<DebugRenderer>();
 }
 
 Engine::~Engine() { KX_ASSERT_MSG(is_shutting_down, "Engine was not shut down properly, did you forget to call ::shutdown?"); }

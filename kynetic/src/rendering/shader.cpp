@@ -21,6 +21,13 @@ Shader::Shader(const std::filesystem::path& path) : Resource(Type::Shader, path.
     session_desc.targets = &target_desc;
     session_desc.targetCount = 1;
 
+    const char* search_paths[] = {
+        "kynetic/src",
+        "assets/shaders"
+    };
+    session_desc.searchPaths = search_paths;
+    session_desc.searchPathCount = 2;
+
     slang::CompilerOptionEntry options[] = {
         {slang::CompilerOptionName::EmitSpirvDirectly, {slang::CompilerOptionValueKind::Int, 1}},
         {slang::CompilerOptionName::DebugInformation, {slang::CompilerOptionValueKind::Int, SLANG_DEBUG_INFO_LEVEL_STANDARD}}};
