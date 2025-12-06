@@ -36,7 +36,6 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
         GIT_TAG v1.4.319
 )
-# set(VK_BOOTSTRAP_VULKAN_HEADER_DIR ${Vulkan_INCLUDE_DIRS})
 FetchContent_MakeAvailable(vk-bootstrap)
 
 # vma (Vulkan Memory Allocator)
@@ -229,7 +228,6 @@ if (WIN32)
 endif ()
 
 add_library(kynetic STATIC
-        assets/shaders/shader_types.hpp
         src/core/components.hpp
         src/core/device.cpp
         src/core/device.hpp
@@ -290,7 +288,6 @@ target_compile_features(kynetic PUBLIC cxx_std_20)
 
 target_include_directories(kynetic PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders
 )
 
 target_precompile_headers(kynetic PUBLIC
@@ -320,10 +317,12 @@ endif ()
 if (MSVC)
     target_compile_options(kynetic PRIVATE /W4 /WX)
 else ()
-    target_compile_options(kynetic PRIVATE
-            -Wall -Wextra -Wpedantic -Werror
-            -Wno-missing-field-initializers)
+    target_compile_options(kynetic PRIVATE -Werror 
+            -Wno-missing-designated-field-initializers
+            -Wno-missing-field-initializers
+            -Wno-missing-braces)
 endif ()
+
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(kynetic PUBLIC DEBUG)

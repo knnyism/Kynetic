@@ -83,14 +83,13 @@ public:
 class GraphicsPipelineBuilder
 {
     std::shared_ptr<Shader> m_shader;
-    VkPipelineCreateFlags m_flags{0};
+    // VkPipelineCreateFlags m_flags{0};
 
     VkPipelineInputAssemblyStateCreateInfo m_input_assembly{.sType =
                                                                 VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     VkPipelineRasterizationStateCreateInfo m_rasterizer{.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     VkPipelineColorBlendAttachmentState m_color_blend_attachment{};
     VkPipelineMultisampleStateCreateInfo m_multisampling{.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    VkPipelineLayout m_pipeline_layout{};
     VkPipelineDepthStencilStateCreateInfo m_depth_stencil{.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     VkPipelineRenderingCreateInfo m_render_info{.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     VkFormat m_color_attachment_format{};

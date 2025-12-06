@@ -63,7 +63,7 @@ Scene::Scene()
                                      { return (m1->mesh.get() > m2->mesh.get()) - (m1->mesh.get() < m2->mesh.get()); })
             .build();
 
-    m_cull_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/cull.slang");
+    m_cull_shader = Engine::get().resources().load<Shader>("assets/shaders/cull.slang");
     m_cull_pipeline =
         std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_cull_shader).build(Engine::get().device()));
 }

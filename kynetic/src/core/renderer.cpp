@@ -35,10 +35,10 @@ Renderer::Renderer()
                                .set_multisampling_none()
                                .disable_blending();
 
-    m_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/lit.slang");
+    m_lit_shader = Engine::get().resources().load<Shader>("assets/shaders/lit.slang");
     m_lit_pipeline = std::make_unique<Pipeline>(general_builder.set_shader(m_lit_shader).build(device));
 
-    m_mesh_lit_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/mesh_lit.slang");
+    m_mesh_lit_shader = Engine::get().resources().load<Shader>("assets/shaders/mesh_lit.slang");
     m_mesh_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
                                                          .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
                                                          .set_polygon_mode(VK_POLYGON_MODE_FILL)
@@ -51,7 +51,7 @@ Renderer::Renderer()
                                                          .set_shader(m_mesh_lit_shader)
                                                          .build(device));
 
-    m_clear_shader = Engine::get().resources().load<Shader>("assets/shared_assets/shaders/clear.slang");
+    m_clear_shader = Engine::get().resources().load<Shader>("assets/shaders/clear.slang");
     m_clear_pipeline = std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_clear_shader).build(device));
 }
 

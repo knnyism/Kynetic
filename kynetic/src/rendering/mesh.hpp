@@ -47,9 +47,9 @@ class Mesh : public Resource
 public:
     Mesh(const std::filesystem::path& path,
          uint32_t mesh_index,
-         std::span<uint32_t> indices,
-         std::span<glm::vec4> positions,
-         std::span<Vertex> vertices,
+         std::span<uint32_t> unindexed_indices,
+         std::span<glm::vec4> unindexed_positions,
+         std::span<Vertex> unindexed_vertices,
          std::shared_ptr<Material> material);
     void calculate_bounds(const std::span<glm::vec4>& positions);
     ~Mesh() override;

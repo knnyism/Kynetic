@@ -21,20 +21,56 @@ using namespace kynetic;
 
 Mesh::Mesh(const std::filesystem::path& path,
            uint32_t mesh_index,
-           std::span<uint32_t> indices,
-           std::span<glm::vec4> positions,
-           std::span<Vertex> vertices,
+           std::span<uint32_t> unindexed_indices,
+           std::span<glm::vec4> unindexed_positions,
+           std::span<Vertex> unindexed_vertices,
            std::shared_ptr<Material> material)
     : Resource(Type::Mesh, path.string()),
       m_mesh_index(mesh_index),
-      m_index_count(static_cast<uint32_t>(indices.size())),
-      m_vertex_count(static_cast<uint32_t>(vertices.size())),
+      m_index_count(static_cast<uint32_t>(unindexed_indices.size())),
+      m_vertex_count(static_cast<uint32_t>(unindexed_vertices.size())),
       m_material(std::move(material))
 {
-    calculate_bounds(positions);
+    /*size_t index_count = unindexed_indices.size();
+    size_t unindexed_vertex_count = unindexed_positions.size();
+    std::vector<unsigned int> remap(unindexed_vertex_count);
+    size_t vertex_count = meshopt_generateVertexRemap(remap.data(),
+                                                      unindexed_indices.data(),
+                                                      index_count,
+                                                      unindexed_positions.data(),
+                                                      unindexed_vertex_count,
+                                                      sizeof(glm::vec4));*/
+
+    std::span<glm::vec4>& positions = unindexed_positions;
+    std::span<uint32_t>& indices = unindexed_indices;
+
+    /*meshopt_remapIndexBuffer(indices.data(), unindexed_indices.data(), index_count, remap.data());
+    meshopt_remapVertexBuffer(positions.data(),
+                              unindexed_vertices.data(),
+                              unindexed_vertex_count,
+                              sizeof(glm::vec4),
+                              remap.data());*/
+
+    /*meshopt_optimizeVertexCache(indices.data(), indices.data(), index_count, vertex_count);
+    meshopt_optimizeOverdraw(indices.data(),
+                             indices.data(),
+                             index_count,
+                             &positions[0].x,
+                             vertex_count,
+                             sizeof(glm::vec4),
+                             1.05f);
+
+    meshopt_optimizeVertexFetch(positions.data(),
+                                indices.data(),
+                                index_count,
+                                positions.data(),
+                                vertex_count,
+                                sizeof(glm::vec4));*/
+
+    calculate_bounds(unindexed_positions);
 
     const size_t max_vertices = 64;
-    const size_t max_triangles = 124;
+    const size_t max_triangles = 128;
     const float cone_weight = 0.0f;
 
     const size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, max_triangles);
@@ -49,16 +85,16 @@ Mesh::Mesh(const std::filesystem::path& path,
     meshlet_triangles.resize(max_meshlets * max_triangles * 3);
 
     m_meshlet_count = meshopt_buildMeshlets(meshlets.data(),
-                                                 meshlet_vertex_indices.data(),
-                                                 meshlet_triangles.data(),
-                                                 indices.data(),
-                                                 indices.size(),
-                                                 reinterpret_cast<const float*>(positions.data()),
-                                                 positions.size(),
-                                                 sizeof(glm::vec4),
-                                                 max_vertices,
-                                                 max_triangles,
-                                                 cone_weight);
+                                            meshlet_vertex_indices.data(),
+                                            meshlet_triangles.data(),
+                                            indices.data(),
+                                            indices.size(),
+                                            reinterpret_cast<const float*>(positions.data()),
+                                            positions.size(),
+                                            sizeof(glm::vec4),
+                                            max_vertices,
+                                            max_triangles,
+                                            cone_weight);
 
     std::vector<MeshletData> meshlets_data;
 
@@ -81,7 +117,7 @@ Mesh::Mesh(const std::filesystem::path& path,
         meshlet_data.cone_axis[2] = meshlet_bounds.cone_axis_s8[2];
 
         meshlet_data.cone_cutoff = meshlet_bounds.cone_cutoff_s8;
-        
+
         meshlet_data.vertex_offset = meshlet.vertex_offset;
         meshlet_data.triangle_offset = meshlet.triangle_offset;
         meshlet_data.vertex_count = static_cast<uint8_t>(meshlet.vertex_count);
@@ -90,20 +126,19 @@ Mesh::Mesh(const std::filesystem::path& path,
 
     Device& device = Engine::get().device();
 
-    const size_t index_buffer_size = indices.size_bytes();
-    const size_t position_buffer_size = positions.size_bytes();
-    const size_t vertex_buffer_size = vertices.size_bytes();
+    const size_t index_buffer_size = indices.size() * sizeof(uint32_t);
+    const size_t position_buffer_size = positions.size() * sizeof(glm::vec4);
+    const size_t vertex_buffer_size = unindexed_vertices.size() * sizeof(Vertex);
 
     const size_t meshlet_buffer_size = meshlets_data.size() * sizeof(MeshletData);
     const size_t meshlet_vertices_buffer_size = meshlet_vertex_indices.size() * sizeof(uint32_t);
     const size_t meshlet_triangles_buffer_size = meshlet_triangles.size() * sizeof(uint8_t);
 
-    m_index_buffer = device.create_buffer(
-        index_buffer_size,
+    m_index_buffer = device.create_buffer(index_buffer_size,
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                                               VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+                                          VMA_MEMORY_USAGE_GPU_ONLY);
     {
         VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
                                                       .buffer = m_index_buffer.buffer};
@@ -131,9 +166,9 @@ Mesh::Mesh(const std::filesystem::path& path,
     }
 
     m_meshlet_buffer = device.create_buffer(meshlet_buffer_size,
-                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                             VMA_MEMORY_USAGE_GPU_ONLY);
+                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                            VMA_MEMORY_USAGE_GPU_ONLY);
     {
         VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
                                                       .buffer = m_meshlet_buffer.buffer};
@@ -178,7 +213,7 @@ Mesh::Mesh(const std::filesystem::path& path,
     memcpy(static_cast<char*>(data) + offset, positions.data(), position_buffer_size);
     offset += position_buffer_size;
 
-    memcpy(static_cast<char*>(data) + offset, vertices.data(), vertex_buffer_size);
+    memcpy(static_cast<char*>(data) + offset, unindexed_vertices.data(), vertex_buffer_size);
     offset += vertex_buffer_size;
 
     memcpy(static_cast<char*>(data) + offset, meshlets_data.data(), meshlet_buffer_size);

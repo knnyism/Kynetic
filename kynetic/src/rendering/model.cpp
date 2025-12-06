@@ -64,8 +64,13 @@ Model::Model(const std::filesystem::path& path) : Resource(Type::Model, path.str
     fastgltf::Asset asset;
     fastgltf::Parser parser;
 
-    auto loaded_asset = parser.loadGltf(file.get(), path.parent_path(), options);
-    if (loaded_asset) asset = std::move(loaded_asset.get());
+    fastgltf::Expected<fastgltf::Asset> loaded_asset = parser.loadGltf(file.get(), path.parent_path(), options);
+    KX_ASSERT_MSG(loaded_asset.error() == fastgltf::Error::None, "failed to load gltf ({} - {}): {}", path.parent_path().string(), path.string(), fastgltf::getErrorMessage(loaded_asset.error()));
+
+    asset = std::move(loaded_asset.get());
+
+    auto validation = fastgltf::validate(asset);
+    KX_ASSERT_MSG(validation == fastgltf::Error::None, "glTF validation failed: {}", fastgltf::getErrorMessage(validation));
 
     std::vector<uint32_t> indices;
     std::vector<glm::vec4> positions;

@@ -67,7 +67,7 @@
     }
 
 #define DIAGNOSE(diagnostics) \
-    if (diagnostics) printf("%s", (char*)diagnostics->getBufferPointer());
+    if (diagnostics) printf("%s", (const char*)diagnostics->getBufferPointer());
 
 #define KX_ASSERT(condition)                                                                       \
     do                                                                                             \
@@ -130,6 +130,8 @@
 #endif
 // NOLINTEND
 // clang-format on
+
+#undef None
 
 constexpr bool USE_VALIDATION_LAYERS = true;
 constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 4;

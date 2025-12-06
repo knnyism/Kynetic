@@ -21,14 +21,11 @@ Shader::Shader(const std::filesystem::path& path) : Resource(Type::Shader, path.
     session_desc.targets = &target_desc;
     session_desc.targetCount = 1;
 
-    std::array<slang::CompilerOptionEntry, 2> options = {
-        {{
-            slang::CompilerOptionName::EmitSpirvDirectly,
-            {slang::CompilerOptionValueKind::Int, 1, 0, nullptr, nullptr},
-        }},
-    };
-    session_desc.compilerOptionEntries = options.data();
-    session_desc.compilerOptionEntryCount = static_cast<uint32_t>(options.size());
+    slang::CompilerOptionEntry options[] = {
+        {slang::CompilerOptionName::EmitSpirvDirectly, {slang::CompilerOptionValueKind::Int, 1}},
+        {slang::CompilerOptionName::DebugInformation, {slang::CompilerOptionValueKind::Int, SLANG_DEBUG_INFO_LEVEL_STANDARD}}};
+    session_desc.compilerOptionEntries = options;
+    session_desc.compilerOptionEntryCount = 2;
 
     Slang::ComPtr<slang::ISession> session;
     device.get_slang_session()->createSession(session_desc, session.writeRef());
