@@ -27,6 +27,10 @@ Shader::Shader(const std::filesystem::path& path) : Resource(Type::Shader, path.
     session_desc.compilerOptionEntries = options;
     session_desc.compilerOptionEntryCount = 2;
 
+    const char* search_paths[] = {"kynetic/src", "assets/shaders"};
+    session_desc.searchPaths = search_paths;
+    session_desc.searchPathCount = 2;
+
     Slang::ComPtr<slang::ISession> session;
     device.get_slang_session()->createSession(session_desc, session.writeRef());
 

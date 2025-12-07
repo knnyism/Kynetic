@@ -6,7 +6,6 @@
 
 namespace kynetic
 {
-
 class Device;
 class Shader;
 
@@ -105,10 +104,10 @@ public:
     GraphicsPipelineBuilder& set_depth_format(VkFormat format);
     GraphicsPipelineBuilder& disable_depthtest();
     GraphicsPipelineBuilder& enable_depthtest(bool depth_write_enable, VkCompareOp op);
+    GraphicsPipelineBuilder& enable_blending_alpha();
 
     // GraphicsPipelineBuilder& set_flags(VkPipelineCreateFlags flags);
 
     Pipeline build(Device& device) const;
 };
-
 }  // namespace kynetic
