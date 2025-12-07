@@ -226,7 +226,7 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::enable_depthtest(bool depth_wr
     return *this;
 }
 
-GraphicsPipelineBuilder& kynetic::GraphicsPipelineBuilder::enable_blending_alpha()
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::enable_blending_alpha()
 {
     m_color_blend_attachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

@@ -120,6 +120,73 @@ void Scene::gpu_cull() const
     ctx.dcb.dispatch(dispatch_x, 1, 1);
 }
 
+void Scene::freeze_culling_camera()
+{
+    m_debug_settings.pause_culling = true;
+    m_debug_settings.frozen_view = m_view;
+    m_debug_settings.frozen_projection = m_projection;
+    m_debug_settings.frozen_vp = m_projection * m_view;
+    m_debug_settings.frozen_camera_position = glm::vec3(glm::inverse(m_view)[3]);
+}
+
+void Scene::unfreeze_culling_camera() { m_debug_settings.pause_culling = false; }
+
+std::vector<glm::vec3> Scene::get_frustum_corners(const glm::mat4& vp) const
+{
+    glm::mat4 inv_vp = glm::inverse(vp);
+
+    std::vector<glm::vec3> corners;
+    corners.reserve(8);
+
+    const float ndc_coords[8][3] =
+        {{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}, {-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+
+    for (auto ndc_coord : ndc_coords)
+    {
+        glm::vec4 corner = inv_vp * glm::vec4(ndc_coord[0], ndc_coord[1], ndc_coord[2], 1.0f);
+        corners.push_back(glm::vec3(corner) / corner.w);
+    }
+
+    return corners;
+}
+
+std::vector<DebugLineVertex> Scene::get_frustum_lines() const
+{
+    std::vector<DebugLineVertex> vertices;
+
+    if (!m_debug_settings.pause_culling || !m_debug_settings.show_frustum) return vertices;
+
+    auto corners = get_frustum_corners(m_debug_settings.frozen_vp);
+
+    glm::vec4 color{1.0f, 1.0f, 0.0f, 1.0f};
+
+    auto add_line = [&](const glm::vec3& a, const glm::vec3& b)
+    {
+        vertices.push_back({a, 0.0f, color});
+        vertices.push_back({b, 0.0f, color});
+    };
+
+    // Near
+    add_line(corners[0], corners[1]);
+    add_line(corners[1], corners[2]);
+    add_line(corners[2], corners[3]);
+    add_line(corners[3], corners[0]);
+
+    // Far
+    add_line(corners[4], corners[5]);
+    add_line(corners[5], corners[6]);
+    add_line(corners[6], corners[7]);
+    add_line(corners[7], corners[4]);
+
+    // The rest lol
+    add_line(corners[0], corners[4]);
+    add_line(corners[1], corners[5]);
+    add_line(corners[2], corners[6]);
+    add_line(corners[3], corners[7]);
+
+    return vertices;
+}
+
 void Scene::update()
 {
     Device& device = Engine::get().device();
@@ -217,9 +284,18 @@ void Scene::update()
         .view_inv = glm::inverse(glm::transpose(m_view)),
         .proj = m_projection,
         .vp = m_projection * m_view,
+
+        .debug_view = m_debug_settings.pause_culling ? m_debug_settings.frozen_view : m_view,
+        .debug_view_inv = m_debug_settings.pause_culling ? glm::inverse(glm::transpose(m_debug_settings.frozen_view))
+                                                         : glm::inverse(glm::transpose(m_view)),
+        .debug_proj = m_debug_settings.pause_culling ? m_debug_settings.frozen_projection : m_projection,
+        .debug_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : m_projection * m_view,
+
         .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
         .sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f),
         .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 2.5f,
+
+        .use_debug_culling = m_debug_settings.pause_culling ? 1u : 0u,
     };
 
     update_buffers();
@@ -426,8 +502,8 @@ void Scene::cull(RenderMode render_mode)
     {
         case RenderMode::CpuDriven:
         {
-            cpu_cull(m_scene_data.vp);
-
+            glm::mat4 cull_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : m_scene_data.vp;
+            cpu_cull(cull_vp);
             update_buffers();
         }
         break;

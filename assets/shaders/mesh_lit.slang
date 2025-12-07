@@ -21,6 +21,9 @@ struct MeshPayload
 };
 
 ConstantBuffer<SceneData>                   scene;
+RWStructuredBuffer<MeshletStatsData>        stats;
+RWStructuredBuffer<MeshletDebugData>        debug_data;
+
 [[vk::binding(0, 1)]] Sampler2D             textures[];
 [[vk::push_constant]] MeshDrawPushConstants constants;
 
@@ -39,6 +42,14 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
     uint meshlet_index = group_id * 32 + group_thread_id;
 
     bool accept = false;
+    
+    float3 world_center = float3(0, 0, 0);
+    float world_radius = 0;
+    float3 world_cone_axis = float3(0, 1, 0);
+    float cone_cutoff_value = 0;
+
+    float4x4 cull_vp = scene.use_debug_culling > 0 ? scene.debug_vp : scene.vp;
+    float3 cull_camera_pos = scene.use_debug_culling > 0 ? scene.debug_view_inv[3].xyz : scene.view_inv[3].xyz;
 
     if (meshlet_index < draw.meshlet_count)
     {
@@ -57,12 +68,44 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
                                                                           int(meshlet.cone_axis[2]) / 127.0)));
         float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
 
-        accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, scene.view_inv[3].xyz);
-        accept = accept && is_visible(scene.vp, center.xyz, radius);
+        accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
+        accept = accept && is_visible(cull_vp, center.xyz, radius);
+
+        world_center = center.xyz;
+        world_radius = radius;
+        world_cone_axis = cone_axis;
+        cone_cutoff_value = cone_cutoff;
     }
 
     uint index = WavePrefixCountBits(accept);
     uint count = WaveActiveCountBits(accept);
+    
+    uint meshlets_in_wave = WaveActiveCountBits(meshlet_index < draw.meshlet_count);
+
+    if (group_thread_id == 0 && group_id == 0)
+    {
+        InterlockedAdd(stats[0].total_meshlets, draw.meshlet_count);
+    }
+    
+    if (group_thread_id == 0 && count > 0)
+    {
+        InterlockedAdd(stats[0].visible_meshlets, count);
+    }
+
+    if (meshlet_index < draw.meshlet_count)
+    {
+        uint debug_index;
+        InterlockedAdd(stats[0].pad0, 1, debug_index);
+        
+        if (debug_index < 65536)
+        {
+            debug_data[debug_index].center = world_center;
+            debug_data[debug_index].radius = world_radius;
+            debug_data[debug_index].cone_axis = world_cone_axis;
+            debug_data[debug_index].cone_cutoff = cone_cutoff_value;
+            debug_data[debug_index].is_visible = accept ? 1 : 0;
+        }
+    }
 
     if (accept) payload.meshlet_indices[index] = meshlet_index;
 

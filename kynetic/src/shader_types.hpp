@@ -80,9 +80,17 @@ struct SceneData
     column_major float4x4 proj;
     column_major float4x4 vp;
 
+    column_major float4x4 debug_view;
+    column_major float4x4 debug_view_inv;
+    column_major float4x4 debug_proj;
+    column_major float4x4 debug_vp;
+
     float4 ambient_color;
     float4 sun_direction;
     float4 sun_color;
+
+    uint32_t use_debug_culling;
+    uint32_t pad0, pad1, pad2;
 };
 
 struct InstanceData
@@ -114,4 +122,43 @@ struct MeshletData
     uint32_t triangle_offset;
     uint8_t vertex_count;
     uint8_t triangle_count;
+};
+
+struct DebugLineVertex
+{
+    float3 position;
+    float pad0;
+    float4 color;
+};
+
+struct DebugPushConstants
+{
+    VkDeviceAddress vertices;
+    uint32_t vertex_count;
+    uint32_t is_line;
+};
+
+struct MeshletDebugData
+{
+    float3 center;
+    float radius;
+    float3 cone_axis;
+    float cone_cutoff;
+    uint32_t is_visible;
+    uint32_t pad0, pad1, pad2;
+};
+
+struct DebugMeshletPushConstants
+{
+    VkDeviceAddress meshlet_debug_data;
+    uint32_t meshlet_count;
+    uint32_t show_spheres;
+    uint32_t show_cones;
+};
+
+struct MeshletStatsData
+{
+    uint32_t total_meshlets;
+    uint32_t visible_meshlets;
+    uint32_t pad0, pad1;
 };

@@ -6,11 +6,26 @@
 
 namespace kynetic
 {
-
 struct TransformComponent;
 struct MeshComponent;
 struct CameraComponent;
 struct MainCameraTag;
+
+struct DebugSettings
+{
+    bool pause_culling{false};
+    bool show_frustum{false};
+    bool show_meshlet_spheres{false};
+    bool show_meshlet_cones{false};
+
+    glm::mat4 frozen_view{1.f};
+    glm::mat4 frozen_projection{1.f};
+    glm::mat4 frozen_vp{1.f};
+    glm::vec3 frozen_camera_position{0.f};
+
+    uint32_t total_meshlets{0};
+    uint32_t visible_meshlets{0};
+};
 
 class Scene
 {
@@ -50,6 +65,8 @@ class Scene
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
 
+    DebugSettings m_debug_settings;
+
     void cpu_cull(const glm::mat4& vp);
     void gpu_cull() const;
 
@@ -82,8 +99,16 @@ public:
     [[nodiscard]] AllocatedBuffer get_scene_buffer() const;
     [[nodiscard]] AllocatedBuffer get_mesh_indirect_buffer() const;
 
+    [[nodiscard]] DebugSettings& get_debug_settings() { return m_debug_settings; }
+    [[nodiscard]] const DebugSettings& get_debug_settings() const { return m_debug_settings; }
+
+    void freeze_culling_camera();
+    void unfreeze_culling_camera();
+
+    std::vector<glm::vec3> get_frustum_corners(const glm::mat4& vp) const;
+    std::vector<DebugLineVertex> get_frustum_lines() const;
+
     void cull(RenderMode render_mode);
     void draw(RenderMode render_mode) const;
 };
-
 }  // namespace kynetic
