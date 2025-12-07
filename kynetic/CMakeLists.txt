@@ -237,8 +237,6 @@ add_library(kynetic STATIC
         src/core/input.hpp
         src/core/renderer.cpp
         src/core/renderer.hpp
-        src/core/debug_renderer.cpp
-        src/core/debug_renderer.hpp
         src/core/resource_manager.cpp
         src/core/resource_manager.hpp
         src/core/scene.cpp
