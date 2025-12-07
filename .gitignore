@@ -2,3 +2,4 @@
 .idea/
 **/CmakeSettings.json
 **/out
+imgui.ini
