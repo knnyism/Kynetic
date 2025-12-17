@@ -279,24 +279,33 @@ void Scene::update()
             }
         });
 
+    glm::mat4 vp = m_projection * m_view;
+
     m_scene_data = SceneData{
         .view = m_view,
         .view_inv = glm::inverse(glm::transpose(m_view)),
         .proj = m_projection,
-        .vp = m_projection * m_view,
+        .vp = vp,
+        .previous_vp = m_previous_vp,
 
         .debug_view = m_debug_settings.pause_culling ? m_debug_settings.frozen_view : m_view,
         .debug_view_inv = m_debug_settings.pause_culling ? glm::inverse(glm::transpose(m_debug_settings.frozen_view))
                                                          : glm::inverse(glm::transpose(m_view)),
         .debug_proj = m_debug_settings.pause_culling ? m_debug_settings.frozen_projection : m_projection,
-        .debug_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : m_projection * m_view,
+        .debug_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : vp,
 
         .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
         .sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f),
         .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 2.5f,
 
         .use_debug_culling = m_debug_settings.pause_culling ? 1u : 0u,
+
+        .z_near = 0.1f,
+        .projection_00 = m_projection[0][0],
+        .projection_11 = m_projection[1][1],
     };
+
+    m_previous_vp = vp;
 
     update_buffers();
 }

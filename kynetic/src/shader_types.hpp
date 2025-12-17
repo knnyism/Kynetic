@@ -80,6 +80,8 @@ struct SceneData
     column_major float4x4 proj;
     column_major float4x4 vp;
 
+    column_major float4x4 previous_vp;
+
     column_major float4x4 debug_view;
     column_major float4x4 debug_view_inv;
     column_major float4x4 debug_proj;
@@ -90,7 +92,8 @@ struct SceneData
     float4 sun_color;
 
     uint32_t use_debug_culling;
-    uint32_t pad0, pad1, pad2;
+
+    float z_near, projection_00, projection_11;
 };
 
 struct InstanceData

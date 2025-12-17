@@ -125,10 +125,11 @@ void Renderer::init_render_target()
     view_info.subresourceRange.levelCount = 1;
 
     std::vector<PoolSizeRatio> ratios = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
     };
 
-    m_depth_pyramid_allocator.init_pool(device.get(), MAX_DEPTH_PYRAMID_LEVELS, ratios);
+    m_depth_pyramid_allocator.init_pool(device.get(), MAX_DEPTH_PYRAMID_LEVELS * 2, ratios);
 
     VkSamplerCreateInfo sampler_create_info{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr};
     sampler_create_info.maxLod = VK_LOD_CLAMP_NONE;
@@ -144,7 +145,7 @@ void Renderer::init_render_target()
     sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 
     VkSamplerReductionModeCreateInfoEXT reduction_create_info = {VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT};
-    reduction_create_info.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX;
+    reduction_create_info.reductionMode = VK_SAMPLER_REDUCTION_MODE_MIN;  // min cuz reverse-z!
     sampler_create_info.pNext = &reduction_create_info;
 
     vkCreateSampler(device.get(), &sampler_create_info, nullptr, &m_depth_pyramid_sampler);
@@ -388,6 +389,11 @@ void Renderer::render()
                                     sizeof(SceneData),
                                     0,
                                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                writer.write_image(1,
+                                   m_depth_pyramid.view,
+                                   m_depth_pyramid_sampler,
+                                   VK_IMAGE_LAYOUT_GENERAL,
+                                   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
                 writer.update_set(device.get(), scene_descriptor);
             }
             ctx.dcb.bind_descriptors(scene_descriptor);

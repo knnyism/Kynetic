@@ -20,6 +20,4 @@ void main(uint3 global_id : SV_DispatchThreadID)
     float result = min(min(min(color00, color01), color10), color11);
 
     dst[global_id.xy] = float4(result, 0.0, 0.0, 0.0);
-
-    GroupMemoryBarrier();
 }

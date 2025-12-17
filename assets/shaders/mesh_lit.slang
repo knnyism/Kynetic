@@ -21,6 +21,7 @@ struct MeshPayload
 };
 
 ConstantBuffer<SceneData>                   scene;
+Sampler2D<float>                           depth_pyramid_texture;
 
 [[vk::binding(0, 1)]] Sampler2D             textures[];
 [[vk::push_constant]] MeshDrawPushConstants constants;
@@ -53,6 +54,7 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
         float scale_x = length(float3(instance.model[0][0], instance.model[1][0], instance.model[2][0]));
         float scale_y = length(float3(instance.model[0][1], instance.model[1][1], instance.model[2][1]));
         float scale_z = length(float3(instance.model[0][2], instance.model[1][2], instance.model[2][2]));
+
         float scale = max(scale_x, max(scale_y, scale_z));
         float radius = meshlet.radius * scale;
 
@@ -63,6 +65,46 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
         accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
         accept = accept && is_visible(cull_vp, center.xyz, radius);
+
+        float4 aabb;
+
+        bool occlusion_visible = true;
+        if (accept) {
+            float4x4 cull_view = scene.use_debug_culling > 0 ? scene.debug_view : scene.view;
+            float4 view_center = mul(cull_view, center);
+
+            if (project_sphere(view_center.xyz, radius, scene.z_near, scene.projection_00, scene.projection_11, aabb))
+            {
+                float width;
+                float height;
+
+                depth_pyramid_texture.GetDimensions(width, height);
+
+                float aabb_width = (aabb.z - aabb.x) * width;
+                float aabb_height = (aabb.w - aabb.y) * height;
+
+                float level = floor(log2(max(aabb_width, aabb_height)));
+
+                float2 uv = (aabb.xy + aabb.zw) * 0.5;
+                // uv.y = 1.0 - uv.y; // Umm idk commenting this line out got it to work......
+
+                // min cuz reverse-z!!!!
+                float depth = depth_pyramid_texture.SampleLevel(uv, level);
+                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.y), level));
+                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.w), level));
+                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.w), level));
+                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.y), level));
+
+                float3 dir = normalize(cull_camera_pos - center.xyz);
+
+                float4 sphere_clip = mul(scene.previous_vp, float4(center.xyz + dir * radius, 1.0));
+                float depth_sphere = sphere_clip.z / sphere_clip.w;
+
+                occlusion_visible = (depth_sphere >= depth);
+            }
+        }
+
+         accept = accept && occlusion_visible;
     }
 
     uint index = WavePrefixCountBits(accept);
@@ -143,10 +185,6 @@ struct Fragment
 [shader("fragment")]
 Fragment fragment_main(CoarseVertex coarse_vertex) : SV_Target
 {
-    MaterialData* materials = (MaterialData*)constants.materials;
-
-    MaterialData material = materials[coarse_vertex.material_index];
-
     float n_dot_l = saturate(dot(coarse_vertex.normal, -scene.sun_direction.xyz));
 
     Fragment output;

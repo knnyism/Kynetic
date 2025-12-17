@@ -64,6 +64,7 @@ class Scene
 
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
+    glm::mat4 m_previous_vp = glm::mat4(1.0f);
 
     DebugSettings m_debug_settings;
 

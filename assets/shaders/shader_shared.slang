@@ -82,3 +82,23 @@ bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff,
 {
     return dot(center - camera_position, cone_axis) >= cone_cutoff * length(center - camera_position) + radius;
 }
+
+bool project_sphere(float3 C, float r, float znear, float P00, float P11, out float4 aabb) {
+    if (-C.z - r < znear)
+        return false;
+
+    float2 cx = float2(C.x, -C.z);
+    float2 vx = float2(sqrt(dot(cx, cx) - r * r), r);
+    float2 minx = mul(float2x2(vx.x, vx.y, -vx.y, vx.x), cx);
+    float2 maxx = mul(float2x2(vx.x, -vx.y, vx.y, vx.x), cx);
+
+    float2 cy = -C.yz;
+    float2 vy = float2(sqrt(dot(cy, cy) - r * r), r);
+    float2 miny = mul(float2x2(vy.x, vy.y, -vy.y, vy.x), cy);
+    float2 maxy = mul(float2x2(vy.x, -vy.y, vy.y, vy.x), cy);
+
+    aabb = float4(minx.x / minx.y * P00, miny.x / miny.y * P11, maxx.x / maxx.y * P00, maxy.x / maxy.y * P11);
+    aabb = aabb.xwzy * float4(0.5f, -0.5f, 0.5f, -0.5f) + float4(0.5f); // clip space -> uv space
+
+    return true;
+}
