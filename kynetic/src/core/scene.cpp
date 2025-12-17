@@ -127,6 +127,7 @@ void Scene::freeze_culling_camera()
     m_debug_settings.frozen_projection = m_projection;
     m_debug_settings.frozen_vp = m_projection * m_view;
     m_debug_settings.frozen_camera_position = glm::vec3(glm::inverse(m_view)[3]);
+    m_debug_settings.frozen_previous_vp = m_previous_vp;
 }
 
 void Scene::unfreeze_culling_camera() { m_debug_settings.pause_culling = false; }
@@ -286,7 +287,7 @@ void Scene::update()
         .view_inv = glm::inverse(glm::transpose(m_view)),
         .proj = m_projection,
         .vp = vp,
-        .previous_vp = m_previous_vp,
+        .previous_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_previous_vp : m_previous_vp,
 
         .debug_view = m_debug_settings.pause_culling ? m_debug_settings.frozen_view : m_view,
         .debug_view_inv = m_debug_settings.pause_culling ? glm::inverse(glm::transpose(m_debug_settings.frozen_view))
@@ -305,7 +306,10 @@ void Scene::update()
         .projection_11 = m_projection[1][1],
     };
 
-    m_previous_vp = vp;
+    if (!m_debug_settings.pause_culling)
+    {
+        m_previous_vp = vp;
+    }
 
     update_buffers();
 }

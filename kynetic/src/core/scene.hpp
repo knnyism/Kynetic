@@ -21,6 +21,7 @@ struct DebugSettings
     glm::mat4 frozen_view{1.f};
     glm::mat4 frozen_projection{1.f};
     glm::mat4 frozen_vp{1.f};
+    glm::mat4 frozen_previous_vp{1.f};
     glm::vec3 frozen_camera_position{0.f};
 
     uint32_t total_meshlets{0};

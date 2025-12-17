@@ -84,8 +84,10 @@ bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff,
 }
 
 bool project_sphere(float3 C, float r, float znear, float P00, float P11, out float4 aabb) {
-    if (-C.z - r < znear)
+    if (-C.z - r < znear) {
+        aabb = 0.0;
         return false;
+    }
 
     float2 cx = float2(C.x, -C.z);
     float2 vx = float2(sqrt(dot(cx, cx) - r * r), r);

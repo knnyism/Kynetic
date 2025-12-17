@@ -34,10 +34,15 @@ class Renderer
     float m_render_scale{1.f};
     RenderMode m_rendering_method{RenderMode::CpuDriven};
     RenderChannel m_render_channel{RenderChannel::Final};
+
     VkExtent2D m_last_device_extent;
+    float m_last_render_scale{1.f};
 
     void init_render_target();
     void destroy_render_target() const;
+
+    void init_depth_pyramid();
+    void destroy_depth_pyramid() const;
 
     void render_debug_visualizations();
     void render_frustum_lines();

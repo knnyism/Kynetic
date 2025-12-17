@@ -29,6 +29,7 @@ Renderer::Renderer()
                                        .build(device));
 
     init_render_target();
+    init_depth_pyramid();
 
     m_lit_pipeline =
         std::make_unique<Pipeline>(GraphicsPipelineBuilder()
@@ -63,7 +64,7 @@ Renderer::Renderer()
 
     m_debug_line_pipeline =
         std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                       .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                       .set_input_topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
                                        .set_polygon_mode(VK_POLYGON_MODE_FILL)
                                        .set_color_attachment_format(m_render_target.format)
                                        .enable_depthtest(false, VK_COMPARE_OP_ALWAYS)
@@ -73,10 +74,13 @@ Renderer::Renderer()
                                        .disable_blending()
                                        .set_shader(Engine::get().resources().load<Shader>("assets/shaders/debug_line.slang"))
                                        .build(device));
+
+    m_last_device_extent = device.get_extent();
 }
 
 Renderer::~Renderer()
 {
+    destroy_depth_pyramid();
     destroy_render_target();
     m_deletion_queue.flush();
 }
@@ -99,9 +103,18 @@ void Renderer::init_render_target()
                                                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                                 VK_IMAGE_ASPECT_DEPTH_BIT);
+}
 
-    uint32_t width = device_extent.width / 2;
-    uint32_t height = device_extent.height / 2;
+void Renderer::init_depth_pyramid()
+{
+    Device& device = Engine::get().device();
+
+    const VkExtent2D draw_extent = {
+        .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
+        .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
+
+    uint32_t width = draw_extent.width / 2;
+    uint32_t height = draw_extent.height / 2;
 
     m_depth_pyramid_levels = 0;
     while (width >= 2 && height >= 2)
@@ -113,7 +126,7 @@ void Renderer::init_render_target()
     }
 
     m_depth_pyramid =
-        device.create_image(VkExtent3D{.width = device_extent.width / 2, .height = device_extent.height / 2, .depth = 1},
+        device.create_image(VkExtent3D{.width = draw_extent.width / 2, .height = draw_extent.height / 2, .depth = 1},
                             VK_FORMAT_R32_SFLOAT,
                             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                             m_depth_pyramid_levels);
@@ -194,13 +207,24 @@ void Renderer::init_render_target()
     }
 }
 
+void Renderer::destroy_depth_pyramid() const
+{
+    Device& device = Engine::get().device();
+
+    for (uint32_t i = 0; i < m_depth_pyramid_levels; ++i) vkDestroyImageView(device.get(), m_depth_pyramid_views[i], nullptr);
+
+    vkDestroySampler(device.get(), m_depth_pyramid_sampler, nullptr);
+
+    m_depth_pyramid_allocator.destroy_pool();
+    device.destroy_image(m_depth_pyramid);
+}
+
 void Renderer::destroy_render_target() const
 {
     Device& device = Engine::get().device();
 
     device.destroy_image(m_render_target);
     device.destroy_image(m_depth_render_target);
-    device.destroy_image(m_depth_pyramid);
 }
 
 void Renderer::render_frustum_lines()
@@ -247,8 +271,7 @@ void Renderer::render_frustum_lines()
                                sizeof(DebugPushConstants),
                                &push_constants);
 
-    uint32_t num_line_segments = static_cast<uint32_t>(frustum_lines.size()) / 2;
-    ctx.dcb.draw_auto(num_line_segments * 6, 1, 0, 0);
+    ctx.dcb.draw_auto(static_cast<uint32_t>(frustum_lines.size()), 1, 0, 0);
 }
 
 void Renderer::render_debug_visualizations() { render_frustum_lines(); }
@@ -304,8 +327,19 @@ void Renderer::render()
     {
         m_last_device_extent = device_extent;
 
+        destroy_depth_pyramid();
         destroy_render_target();
+
         init_render_target();
+        init_depth_pyramid();
+    }
+
+    if (m_last_render_scale != m_render_scale)
+    {
+        m_last_render_scale = m_render_scale;
+
+        destroy_depth_pyramid();
+        init_depth_pyramid();
     }
 
     ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
@@ -424,79 +458,79 @@ void Renderer::render()
 
     ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
 
-    ctx.dcb.bind_pipeline(m_depth_pyramid_pipeline.get());
+    if (!debug_settings.pause_culling)
     {
-        uint32_t width = m_depth_pyramid.extent.width;
-        uint32_t height = m_depth_pyramid.extent.height;
-
-        // util_add_image_barrier(gpu, gpu_commands->vk_command_buffer, depth_texture, RESOURCE_STATE_SHADER_RESOURCE, 0, 1,
-        // true);
-
-        for (uint32_t mip_index = 0; mip_index < m_depth_pyramid_levels; ++mip_index)
+        ctx.dcb.bind_pipeline(m_depth_pyramid_pipeline.get());
         {
+            uint32_t width = m_depth_pyramid.extent.width;
+            uint32_t height = m_depth_pyramid.extent.height;
+
+            for (uint32_t mip_index = 0; mip_index < m_depth_pyramid_levels; ++mip_index)
             {
-                VkImageMemoryBarrier write_barrier{};
-                write_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                write_barrier.srcAccessMask = (mip_index == 0) ? 0 : VK_ACCESS_SHADER_READ_BIT;
-                write_barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                write_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                write_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-                write_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                write_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                write_barrier.image = m_depth_pyramid.image;
-                write_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                write_barrier.subresourceRange.baseMipLevel = mip_index;
-                write_barrier.subresourceRange.levelCount = 1;
-                write_barrier.subresourceRange.baseArrayLayer = 0;
-                write_barrier.subresourceRange.layerCount = 1;
+                {
+                    VkImageMemoryBarrier write_barrier{};
+                    write_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    write_barrier.srcAccessMask = (mip_index == 0) ? 0 : VK_ACCESS_SHADER_READ_BIT;
+                    write_barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                    write_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                    write_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                    write_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    write_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    write_barrier.image = m_depth_pyramid.image;
+                    write_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    write_barrier.subresourceRange.baseMipLevel = mip_index;
+                    write_barrier.subresourceRange.levelCount = 1;
+                    write_barrier.subresourceRange.baseArrayLayer = 0;
+                    write_barrier.subresourceRange.layerCount = 1;
 
-                ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                         0,
-                                         0,
-                                         nullptr,
-                                         0,
-                                         nullptr,
-                                         1,
-                                         &write_barrier);
+                    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                             0,
+                                             0,
+                                             nullptr,
+                                             0,
+                                             nullptr,
+                                             1,
+                                             &write_barrier);
+                }
+
+                ctx.dcb.bind_descriptors(m_depth_pyramid_sets[mip_index], 0, 1);
+
+                uint32_t group_x = (width + 7) / 8;
+                uint32_t group_y = (height + 7) / 8;
+
+                ctx.dcb.dispatch(group_x, group_y, 1);
+
+                {
+                    VkImageMemoryBarrier read_barrier{};
+                    read_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                    read_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                    read_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    read_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+                    read_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                    read_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    read_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                    read_barrier.image = m_depth_pyramid.image;
+                    read_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    read_barrier.subresourceRange.baseMipLevel = mip_index;
+                    read_barrier.subresourceRange.levelCount = 1;
+                    read_barrier.subresourceRange.baseArrayLayer = 0;
+                    read_barrier.subresourceRange.layerCount = 1;
+
+                    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                             0,
+                                             0,
+                                             nullptr,
+                                             0,
+                                             nullptr,
+                                             1,
+                                             &read_barrier);
+                }
+
+                width /= 2;
+                height /= 2;
             }
-
-            ctx.dcb.bind_descriptors(m_depth_pyramid_sets[mip_index], 0, 1);
-
-            uint32_t group_x = (width + 7) / 8;
-            uint32_t group_y = (height + 7) / 8;
-
-            ctx.dcb.dispatch(group_x, group_y, 1);
-
-            {
-                VkImageMemoryBarrier read_barrier{};
-                read_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                read_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                read_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                read_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-                read_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-                read_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                read_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                read_barrier.image = m_depth_pyramid.image;
-                read_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                read_barrier.subresourceRange.baseMipLevel = mip_index;
-                read_barrier.subresourceRange.levelCount = 1;
-                read_barrier.subresourceRange.baseArrayLayer = 0;
-                read_barrier.subresourceRange.layerCount = 1;
-
-                ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                         0,
-                                         0,
-                                         nullptr,
-                                         0,
-                                         nullptr,
-                                         1,
-                                         &read_barrier);
-            }
-
-            width /= 2;
-            height /= 2;
         }
     }
 
