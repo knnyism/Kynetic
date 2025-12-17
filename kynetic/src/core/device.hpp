@@ -128,6 +128,7 @@ public:
                                 VkImageAspectFlags aspect_flags) const;
 
     AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false) const;
+    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, uint32_t mips) const;
     AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 
     void destroy_image(const AllocatedImage& image) const;

@@ -55,17 +55,17 @@ class DescriptorWriter
     std::vector<VkWriteDescriptorSet> m_writes;
 
 public:
-    void write_image(uint32_t binding,
-                     VkImageView image,
-                     VkSampler sampler,
-                     VkImageLayout layout,
-                     VkDescriptorType type,
-                     uint32_t array_element = 0);
-    void write_buffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
+    DescriptorWriter& write_image(uint32_t binding,
+                                  VkImageView image,
+                                  VkSampler sampler,
+                                  VkImageLayout layout,
+                                  VkDescriptorType type,
+                                  uint32_t array_element = 0);
+    DescriptorWriter& write_buffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
 
-    void clear();
+    DescriptorWriter& clear();
 
-    void update_set(VkDevice device, VkDescriptorSet set);
+    DescriptorWriter& update_set(VkDevice device, VkDescriptorSet set);
 };
 
 class DescriptorLayoutBuilder
@@ -73,8 +73,8 @@ class DescriptorLayoutBuilder
     std::vector<VkDescriptorSetLayoutBinding> m_bindings;
 
 public:
-    void add_binding(uint32_t binding, VkDescriptorType type, uint32_t descriptor_count = 1);
-    void clear();
+    DescriptorLayoutBuilder& add_binding(uint32_t binding, VkDescriptorType type, uint32_t descriptor_count = 1);
+    DescriptorLayoutBuilder& clear();
 
     VkDescriptorSetLayout build(VkDevice device,
                                 VkShaderStageFlags stage_flags,

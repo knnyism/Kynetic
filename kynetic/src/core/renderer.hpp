@@ -15,27 +15,21 @@ class Renderer
 
     DeletionQueue m_deletion_queue;
 
-    std::shared_ptr<class Shader> m_clear_shader;
-    std::shared_ptr<class Shader> m_lit_shader;
-    std::shared_ptr<class Shader> m_mesh_lit_shader;
-
     std::unique_ptr<class Pipeline> m_clear_pipeline;
     std::unique_ptr<class Pipeline> m_lit_pipeline;
     std::unique_ptr<class Pipeline> m_mesh_lit_pipeline;
 
-    std::shared_ptr<class Shader> m_debug_line_shader;
-    std::shared_ptr<class Shader> m_debug_meshlet_shader;
-
     std::unique_ptr<class Pipeline> m_debug_line_pipeline;
-    std::unique_ptr<class Pipeline> m_debug_meshlet_pipeline;
 
-    AllocatedBuffer m_stats_buffer;
-    AllocatedBuffer m_stats_readback_buffer;
-    VkDeviceAddress m_stats_buffer_address{0};
+    std::unique_ptr<class Pipeline> m_depth_pyramid_pipeline;
 
-    AllocatedBuffer m_meshlet_debug_buffers[MAX_FRAMES_IN_FLIGHT];
-    uint32_t m_debug_meshlet_count{0};
-    static constexpr uint32_t MAX_DEBUG_MESHLETS = 65536;
+    uint32_t m_depth_pyramid_levels;
+
+    AllocatedImage m_depth_pyramid;
+    DescriptorAllocator m_depth_pyramid_allocator;
+    VkSampler m_depth_pyramid_sampler;
+    VkImageView m_depth_pyramid_views[MAX_DEPTH_PYRAMID_LEVELS];
+    VkDescriptorSet m_depth_pyramid_sets[MAX_DEPTH_PYRAMID_LEVELS];
 
     float m_render_scale{1.f};
     RenderMode m_rendering_method{RenderMode::CpuDriven};
@@ -45,13 +39,8 @@ class Renderer
     void init_render_target();
     void destroy_render_target() const;
 
-    void init_debug_resources();
-    void destroy_debug_resources();
-
     void render_debug_visualizations();
     void render_frustum_lines();
-    void render_meshlet_debug();
-    void readback_stats();
 
     void update();
     void render();

@@ -31,8 +31,14 @@ void CommandBuffer::reset()
 
 void CommandBuffer::transition_image(VkImage image, VkImageLayout current_layout, VkImageLayout new_layout) const
 {
-    const VkImageAspectFlags aspect_mask =
-        (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    const bool is_depth = (current_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ||
+                          (new_layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ||
+                          (current_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) ||
+                          (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) ||
+                          (current_layout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL) ||
+                          (new_layout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
+
+    const VkImageAspectFlags aspect_mask = is_depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
     VkImageMemoryBarrier2 image_barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                                         .pNext = nullptr,

@@ -23,69 +23,61 @@ Renderer::Renderer()
 {
     Device& device = Engine::get().device();
 
+    m_depth_pyramid_pipeline =
+        std::make_unique<Pipeline>(ComputePipelineBuilder()
+                                       .set_shader(Engine::get().resources().load<Shader>("assets/shaders/depth_pyramid.slang"))
+                                       .build(device));
+
     init_render_target();
-    init_debug_resources();
 
-    auto general_builder = GraphicsPipelineBuilder()
-                               .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                               .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                               .set_color_attachment_format(m_render_target.format)
-                               .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-                               .set_depth_format(m_depth_render_target.format)
-                               .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
-                               .set_multisampling_none()
-                               .disable_blending();
+    m_lit_pipeline =
+        std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                       .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                       .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                       .set_color_attachment_format(m_render_target.format)
+                                       .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                                       .set_depth_format(m_depth_render_target.format)
+                                       .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                                       .set_multisampling_none()
+                                       .disable_blending()
+                                       .set_shader(Engine::get().resources().load<Shader>("assets/shaders/lit.slang"))
+                                       .build(device));
 
-    m_lit_shader = Engine::get().resources().load<Shader>("assets/shaders/lit.slang");
-    m_lit_pipeline = std::make_unique<Pipeline>(general_builder.set_shader(m_lit_shader).build(device));
+    m_mesh_lit_pipeline =
+        std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                       .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                       .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                       .set_color_attachment_format(m_render_target.format)
+                                       .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+                                       .set_depth_format(m_depth_render_target.format)
+                                       .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                                       .set_multisampling_none()
+                                       .disable_blending()
+                                       .set_shader(Engine::get().resources().load<Shader>("assets/shaders/mesh_lit.slang"))
+                                       .build(device));
 
-    m_mesh_lit_shader = Engine::get().resources().load<Shader>("assets/shaders/mesh_lit.slang");
-    m_mesh_lit_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                         .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                         .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                         .set_color_attachment_format(m_render_target.format)
-                                                         .enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-                                                         .set_depth_format(m_depth_render_target.format)
-                                                         .set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE)
-                                                         .set_multisampling_none()
-                                                         .disable_blending()
-                                                         .set_shader(m_mesh_lit_shader)
-                                                         .build(device));
+    m_clear_pipeline =
+        std::make_unique<Pipeline>(ComputePipelineBuilder()
+                                       .set_shader(Engine::get().resources().load<Shader>("assets/shaders/clear.slang"))
+                                       .build(device));
 
-    m_clear_shader = Engine::get().resources().load<Shader>("assets/shaders/clear.slang");
-    m_clear_pipeline = std::make_unique<Pipeline>(ComputePipelineBuilder().set_shader(m_clear_shader).build(device));
-
-    m_debug_line_shader = Engine::get().resources().load<Shader>("assets/shaders/debug_line.slang");
-    m_debug_line_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                           .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                           .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                           .set_color_attachment_format(m_render_target.format)
-                                                           .enable_depthtest(false, VK_COMPARE_OP_ALWAYS)
-                                                           .set_depth_format(m_depth_render_target.format)
-                                                           .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE)
-                                                           .set_multisampling_none()
-                                                           .disable_blending()
-                                                           .set_shader(m_debug_line_shader)
-                                                           .build(device));
-
-    m_debug_meshlet_shader = Engine::get().resources().load<Shader>("assets/shaders/debug_meshlet.slang");
-    m_debug_meshlet_pipeline = std::make_unique<Pipeline>(GraphicsPipelineBuilder()
-                                                              .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-                                                              .set_polygon_mode(VK_POLYGON_MODE_FILL)
-                                                              .set_color_attachment_format(m_render_target.format)
-                                                              .enable_depthtest(false, VK_COMPARE_OP_ALWAYS)
-                                                              .set_depth_format(m_depth_render_target.format)
-                                                              .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE)
-                                                              .set_multisampling_none()
-                                                              .enable_blending_alpha()
-                                                              .set_shader(m_debug_meshlet_shader)
-                                                              .build(device));
+    m_debug_line_pipeline =
+        std::make_unique<Pipeline>(GraphicsPipelineBuilder()
+                                       .set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                                       .set_polygon_mode(VK_POLYGON_MODE_FILL)
+                                       .set_color_attachment_format(m_render_target.format)
+                                       .enable_depthtest(false, VK_COMPARE_OP_ALWAYS)
+                                       .set_depth_format(m_depth_render_target.format)
+                                       .set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                                       .set_multisampling_none()
+                                       .disable_blending()
+                                       .set_shader(Engine::get().resources().load<Shader>("assets/shaders/debug_line.slang"))
+                                       .build(device));
 }
 
 Renderer::~Renderer()
 {
     destroy_render_target();
-    destroy_debug_resources();
     m_deletion_queue.flush();
 }
 
@@ -104,54 +96,110 @@ void Renderer::init_render_target()
     m_depth_render_target = device.create_image(device_extent,
                                                 VK_FORMAT_D32_SFLOAT,
                                                 VMA_MEMORY_USAGE_GPU_ONLY,
-                                                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                                 VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    uint32_t width = device_extent.width / 2;
+    uint32_t height = device_extent.height / 2;
+
+    m_depth_pyramid_levels = 0;
+    while (width >= 2 && height >= 2)
+    {
+        m_depth_pyramid_levels++;
+
+        width /= 2;
+        height /= 2;
+    }
+
+    m_depth_pyramid =
+        device.create_image(VkExtent3D{.width = device_extent.width / 2, .height = device_extent.height / 2, .depth = 1},
+                            VK_FORMAT_R32_SFLOAT,
+                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                            m_depth_pyramid_levels);
+
+    VkImageViewCreateInfo view_info =
+        vk_init::imageview_create_info(VK_FORMAT_R32_SFLOAT, m_depth_pyramid.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    view_info.subresourceRange.baseArrayLayer = 0;
+    view_info.subresourceRange.layerCount = 1;
+    view_info.subresourceRange.levelCount = 1;
+
+    std::vector<PoolSizeRatio> ratios = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+    };
+
+    m_depth_pyramid_allocator.init_pool(device.get(), MAX_DEPTH_PYRAMID_LEVELS, ratios);
+
+    VkSamplerCreateInfo sampler_create_info{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr};
+    sampler_create_info.maxLod = VK_LOD_CLAMP_NONE;
+    sampler_create_info.minLod = 0;
+
+    sampler_create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    VkSamplerReductionModeCreateInfoEXT reduction_create_info = {VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT};
+    reduction_create_info.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX;
+    sampler_create_info.pNext = &reduction_create_info;
+
+    vkCreateSampler(device.get(), &sampler_create_info, nullptr, &m_depth_pyramid_sampler);
+
+    DescriptorWriter writer;
+
+    for (uint32_t i = 0; i < m_depth_pyramid_levels; ++i)
+    {
+        view_info.subresourceRange.baseMipLevel = i;
+
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+        VK_CHECK(vkCreateImageView(device.get(), &view_info, nullptr, &m_depth_pyramid_views[i]));
+
+        m_depth_pyramid_sets[i] = m_depth_pyramid_allocator.allocate(m_depth_pyramid_pipeline->get_set_layout(0));
+        if (i == 0)
+        {
+            writer.clear()
+                .write_image(0,
+                             m_depth_render_target.view,
+                             m_depth_pyramid_sampler,
+                             VK_IMAGE_LAYOUT_GENERAL,
+                             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .write_image(1,
+                             m_depth_pyramid_views[i],
+                             m_depth_pyramid_sampler,
+                             VK_IMAGE_LAYOUT_GENERAL,
+                             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                .update_set(device.get(), m_depth_pyramid_sets[i]);
+        }
+        else
+        {
+            writer.clear()
+                .write_image(0,
+                             m_depth_pyramid_views[i - 1],
+                             m_depth_pyramid_sampler,
+                             VK_IMAGE_LAYOUT_GENERAL,
+                             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .write_image(1,
+                             m_depth_pyramid_views[i],
+                             VK_NULL_HANDLE,
+                             VK_IMAGE_LAYOUT_GENERAL,
+                             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                .update_set(device.get(), m_depth_pyramid_sets[i]);
+        }
+    }
 }
 
 void Renderer::destroy_render_target() const
 {
     Device& device = Engine::get().device();
+
     device.destroy_image(m_render_target);
     device.destroy_image(m_depth_render_target);
-}
-
-void Renderer::init_debug_resources()
-{
-    Device& device = Engine::get().device();
-
-    m_stats_buffer = device.create_buffer(sizeof(MeshletStatsData),
-                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                                              VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                          VMA_MEMORY_USAGE_GPU_ONLY);
-    {
-        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                      .buffer = m_stats_buffer.buffer};
-        m_stats_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
-    }
-
-    m_stats_readback_buffer = device.create_buffer(sizeof(MeshletStatsData) * MAX_FRAMES_IN_FLIGHT,
-                                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                                   VMA_MEMORY_USAGE_GPU_TO_CPU);
-
-    for (auto& m_meshlet_debug_buffer : m_meshlet_debug_buffers)
-    {
-        m_meshlet_debug_buffer = device.create_buffer(
-            sizeof(MeshletDebugData) * MAX_DEBUG_MESHLETS,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-    }
-}
-
-void Renderer::destroy_debug_resources()
-{
-    Device& device = Engine::get().device();
-    device.destroy_buffer(m_stats_buffer);
-    device.destroy_buffer(m_stats_readback_buffer);
-    for (const auto& m_meshlet_debug_buffer : m_meshlet_debug_buffers)
-    {
-        device.destroy_buffer(m_meshlet_debug_buffer);
-    }
+    device.destroy_image(m_depth_pyramid);
 }
 
 void Renderer::render_frustum_lines()
@@ -202,98 +250,7 @@ void Renderer::render_frustum_lines()
     ctx.dcb.draw_auto(num_line_segments * 6, 1, 0, 0);
 }
 
-void Renderer::render_meshlet_debug()
-{
-    Device& device = Engine::get().device();
-    Scene& scene = Engine::get().scene();
-    auto& ctx = device.get_context();
-
-    const auto& debug_settings = scene.get_debug_settings();
-
-    if (!debug_settings.show_meshlet_spheres && !debug_settings.show_meshlet_cones) return;
-
-    uint32_t meshlet_count = std::min(m_debug_meshlet_count, MAX_DEBUG_MESHLETS);
-    if (meshlet_count == 0) return;
-
-    uint32_t read_frame = (device.get_frame_index() + MAX_FRAMES_IN_FLIGHT - 2) % MAX_FRAMES_IN_FLIGHT;
-
-    VkDeviceAddress debug_buffer_address;
-    {
-        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                                                      .buffer = m_meshlet_debug_buffers[read_frame].buffer};
-        debug_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
-    }
-
-    ctx.dcb.bind_pipeline(m_debug_meshlet_pipeline.get());
-
-    VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_debug_meshlet_pipeline->get_set_layout(0));
-    {
-        DescriptorWriter writer;
-        writer.write_buffer(0, scene.get_scene_buffer().buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        writer.update_set(device.get(), scene_descriptor);
-    }
-    ctx.dcb.bind_descriptors(scene_descriptor);
-
-    DebugMeshletPushConstants push_constants;
-    push_constants.meshlet_debug_data = debug_buffer_address;
-    push_constants.meshlet_count = meshlet_count;
-    push_constants.show_spheres = debug_settings.show_meshlet_spheres ? 1 : 0;
-    push_constants.show_cones = debug_settings.show_meshlet_cones ? 1 : 0;
-
-    ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                               sizeof(DebugMeshletPushConstants),
-                               &push_constants);
-
-    constexpr uint32_t SPHERE_SEGMENTS = 16;
-    constexpr uint32_t SPHERE_RINGS = 12;
-    constexpr uint32_t VERTICES_PER_SPHERE = SPHERE_SEGMENTS * SPHERE_RINGS * 6;
-    constexpr uint32_t CONE_SEGMENTS = 16;
-    constexpr uint32_t VERTICES_PER_CONE = CONE_SEGMENTS * 3 + CONE_SEGMENTS * 3;
-
-    uint32_t total_vertices = 0;
-    if (debug_settings.show_meshlet_spheres) total_vertices += meshlet_count * VERTICES_PER_SPHERE;
-    if (debug_settings.show_meshlet_cones) total_vertices += meshlet_count * VERTICES_PER_CONE;
-
-    ctx.dcb.draw_auto(total_vertices, 1, 0, 0);
-}
-
-void Renderer::readback_stats()
-{
-    Device& device = Engine::get().device();
-    Scene& scene = Engine::get().scene();
-    auto& ctx = device.get_context();
-
-    uint32_t read_frame = (device.get_frame_index() + MAX_FRAMES_IN_FLIGHT - 2) % MAX_FRAMES_IN_FLIGHT;
-
-    void* data;
-    vmaMapMemory(device.get_allocator(), m_stats_readback_buffer.allocation, &data);
-
-    MeshletStatsData* stats =
-        reinterpret_cast<MeshletStatsData*>(static_cast<char*>(data) + read_frame * sizeof(MeshletStatsData));
-
-    auto& debug_settings = scene.get_debug_settings();
-    debug_settings.total_meshlets = stats->total_meshlets;
-    debug_settings.visible_meshlets = stats->visible_meshlets;
-
-    m_debug_meshlet_count = stats->pad0;
-
-    vmaUnmapMemory(device.get_allocator(), m_stats_readback_buffer.allocation);
-
-    uint32_t write_frame = device.get_frame_index();
-
-    VkBufferCopy copy_region;
-    copy_region.srcOffset = 0;
-    copy_region.dstOffset = write_frame * sizeof(MeshletStatsData);
-    copy_region.size = sizeof(MeshletStatsData);
-
-    ctx.dcb.copy_buffer(m_stats_buffer.buffer, m_stats_readback_buffer.buffer, 1, &copy_region);
-}
-
-void Renderer::render_debug_visualizations()
-{
-    render_frustum_lines();
-    render_meshlet_debug();
-}
+void Renderer::render_debug_visualizations() { render_frustum_lines(); }
 
 void Renderer::render()
 {
@@ -379,36 +336,6 @@ void Renderer::render()
 
     scene.cull(m_rendering_method);
 
-    if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
-    {
-        MeshletStatsData zero_stats = {0, 0, 0, 0};
-        AllocatedBuffer staging =
-            device.create_buffer(sizeof(MeshletStatsData), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-        ctx.deletion_queue.push_function([=, &device] { device.destroy_buffer(staging); });
-        memcpy(staging.info.pMappedData, &zero_stats, sizeof(MeshletStatsData));
-
-        VkBufferCopy clear_copy;
-        clear_copy.srcOffset = 0;
-        clear_copy.dstOffset = 0;
-        clear_copy.size = sizeof(MeshletStatsData);
-        ctx.dcb.copy_buffer(staging.buffer, m_stats_buffer.buffer, 1, &clear_copy);
-
-        VkMemoryBarrier memory_barrier{};
-        memory_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-
-        ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT,
-                                 0,
-                                 1,
-                                 &memory_barrier,
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr);
-    }
-
     VkRenderingAttachmentInfo color_attachment =
         vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depth_attachment =
@@ -451,8 +378,6 @@ void Renderer::render()
         }
         else if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
         {
-            uint32_t write_frame = device.get_frame_index();
-
             ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
 
             VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_mesh_lit_pipeline->get_set_layout(0));
@@ -463,12 +388,6 @@ void Renderer::render()
                                     sizeof(SceneData),
                                     0,
                                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-                writer.write_buffer(1, m_stats_buffer.buffer, sizeof(MeshletStatsData), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-                writer.write_buffer(2,
-                                    m_meshlet_debug_buffers[write_frame].buffer,
-                                    sizeof(MeshletDebugData) * MAX_DEBUG_MESHLETS,
-                                    0,
-                                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
                 writer.update_set(device.get(), scene_descriptor);
             }
             ctx.dcb.bind_descriptors(scene_descriptor);
@@ -491,32 +410,88 @@ void Renderer::render()
         }
 
         scene.draw(m_rendering_method);
-
-        if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
-        {
-            render_debug_visualizations();
-        }
     }
+
+    render_debug_visualizations();
+
     ctx.dcb.end_rendering();
 
-    if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
+    ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+
+    ctx.dcb.bind_pipeline(m_depth_pyramid_pipeline.get());
     {
-        VkMemoryBarrier readback_barrier{};
-        readback_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        readback_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        readback_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        uint32_t width = m_depth_pyramid.extent.width;
+        uint32_t height = m_depth_pyramid.extent.height;
 
-        ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT | VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 0,
-                                 1,
-                                 &readback_barrier,
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr);
+        // util_add_image_barrier(gpu, gpu_commands->vk_command_buffer, depth_texture, RESOURCE_STATE_SHADER_RESOURCE, 0, 1,
+        // true);
 
-        readback_stats();
+        for (uint32_t mip_index = 0; mip_index < m_depth_pyramid_levels; ++mip_index)
+        {
+            {
+                VkImageMemoryBarrier write_barrier{};
+                write_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                write_barrier.srcAccessMask = (mip_index == 0) ? 0 : VK_ACCESS_SHADER_READ_BIT;
+                write_barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                write_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                write_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                write_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                write_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                write_barrier.image = m_depth_pyramid.image;
+                write_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                write_barrier.subresourceRange.baseMipLevel = mip_index;
+                write_barrier.subresourceRange.levelCount = 1;
+                write_barrier.subresourceRange.baseArrayLayer = 0;
+                write_barrier.subresourceRange.layerCount = 1;
+
+                ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                         0,
+                                         0,
+                                         nullptr,
+                                         0,
+                                         nullptr,
+                                         1,
+                                         &write_barrier);
+            }
+
+            ctx.dcb.bind_descriptors(m_depth_pyramid_sets[mip_index], 0, 1);
+
+            uint32_t group_x = (width + 7) / 8;
+            uint32_t group_y = (height + 7) / 8;
+
+            ctx.dcb.dispatch(group_x, group_y, 1);
+
+            {
+                VkImageMemoryBarrier read_barrier{};
+                read_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                read_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                read_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                read_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+                read_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                read_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                read_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                read_barrier.image = m_depth_pyramid.image;
+                read_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                read_barrier.subresourceRange.baseMipLevel = mip_index;
+                read_barrier.subresourceRange.levelCount = 1;
+                read_barrier.subresourceRange.baseArrayLayer = 0;
+                read_barrier.subresourceRange.layerCount = 1;
+
+                ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                         0,
+                                         0,
+                                         nullptr,
+                                         0,
+                                         nullptr,
+                                         1,
+                                         &read_barrier);
+            }
+
+            width /= 2;
+            height /= 2;
+        }
     }
 
     ctx.dcb.transition_image(m_render_target.image,

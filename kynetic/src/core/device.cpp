@@ -62,6 +62,7 @@ Device::Device()
     features_12.descriptorBindingVariableDescriptorCount = true;
     features_12.runtimeDescriptorArray = true;
     features_12.shaderInt8 = true;
+    features_12.samplerFilterMinmax = true;
 
     VkPhysicalDeviceVulkan13Features features_13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     features_13.dynamicRendering = true;
@@ -456,6 +457,32 @@ AllocatedImage Device::create_image(VkExtent3D size, VkFormat format, VkImageUsa
 
     VkImageCreateInfo img_info = vk_init::image_create_info(format, usage, size);
     if (mipmapped) img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+
+    VmaAllocationCreateInfo alloc_info = {};
+    alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    alloc_info.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VK_CHECK(vmaCreateImage(m_allocator, &img_info, &alloc_info, &new_image.image, &new_image.allocation, nullptr));
+
+    VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (format == VK_FORMAT_D32_SFLOAT) aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+    VkImageViewCreateInfo view_info = vk_init::imageview_create_info(format, new_image.image, aspectFlag);
+    view_info.subresourceRange.levelCount = img_info.mipLevels;
+
+    VK_CHECK(vkCreateImageView(m_device, &view_info, nullptr, &new_image.view));
+
+    return new_image;
+}
+
+AllocatedImage Device::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, uint32_t mips) const
+{
+    AllocatedImage new_image;
+    new_image.format = format;
+    new_image.extent = size;
+
+    VkImageCreateInfo img_info = vk_init::image_create_info(format, usage, size);
+    img_info.mipLevels = mips;
 
     VmaAllocationCreateInfo alloc_info = {};
     alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;

@@ -151,10 +151,15 @@ VkDescriptorSet DescriptorAllocatorGrowable::allocate(VkDescriptorSetLayout layo
     }
 
     m_ready_pools.push_back(pool_to_use);
+
     return descriptor_set;
 }
 
-void DescriptorWriter::write_buffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type)
+DescriptorWriter& DescriptorWriter::write_buffer(uint32_t binding,
+                                                 VkBuffer buffer,
+                                                 size_t size,
+                                                 size_t offset,
+                                                 VkDescriptorType type)
 {
     VkDescriptorBufferInfo& info =
         m_buffer_infos.emplace_back(VkDescriptorBufferInfo{.buffer = buffer, .offset = offset, .range = size});
@@ -168,14 +173,16 @@ void DescriptorWriter::write_buffer(uint32_t binding, VkBuffer buffer, size_t si
     write.pBufferInfo = &info;
 
     m_writes.push_back(write);
+
+    return *this;
 }
 
-void DescriptorWriter::write_image(uint32_t binding,
-                                   VkImageView image,
-                                   VkSampler sampler,
-                                   VkImageLayout layout,
-                                   VkDescriptorType type,
-                                   uint32_t array_element)
+DescriptorWriter& DescriptorWriter::write_image(uint32_t binding,
+                                                VkImageView image,
+                                                VkSampler sampler,
+                                                VkImageLayout layout,
+                                                VkDescriptorType type,
+                                                uint32_t array_element)
 {
     VkDescriptorImageInfo& info =
         m_image_infos.emplace_back(VkDescriptorImageInfo{.sampler = sampler, .imageView = image, .imageLayout = layout});
@@ -190,23 +197,31 @@ void DescriptorWriter::write_image(uint32_t binding,
     write.pImageInfo = &info;
 
     m_writes.push_back(write);
+
+    return *this;
 }
 
-void DescriptorWriter::clear()
+DescriptorWriter& DescriptorWriter::clear()
 {
     m_image_infos.clear();
     m_writes.clear();
     m_buffer_infos.clear();
+
+    return *this;
 }
 
-void DescriptorWriter::update_set(VkDevice device, VkDescriptorSet set)
+DescriptorWriter& DescriptorWriter::update_set(VkDevice device, VkDescriptorSet set)
 {
     for (VkWriteDescriptorSet& write : m_writes) write.dstSet = set;
 
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(m_writes.size()), m_writes.data(), 0, nullptr);
+
+    return *this;
 }
 
-void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType type, uint32_t descriptor_count)
+DescriptorLayoutBuilder& DescriptorLayoutBuilder::add_binding(uint32_t binding,
+                                                              VkDescriptorType type,
+                                                              uint32_t descriptor_count)
 {
     VkDescriptorSetLayoutBinding newbind{};
     newbind.binding = binding;
@@ -214,9 +229,16 @@ void DescriptorLayoutBuilder::add_binding(uint32_t binding, VkDescriptorType typ
     newbind.descriptorType = type;
 
     m_bindings.push_back(newbind);
+
+    return *this;
 }
 
-void DescriptorLayoutBuilder::clear() { m_bindings.clear(); }
+DescriptorLayoutBuilder& DescriptorLayoutBuilder::clear()
+{
+    m_bindings.clear();
+
+    return *this;
+}
 
 VkDescriptorSetLayout DescriptorLayoutBuilder::build(VkDevice device,
                                                      VkShaderStageFlags shader_stages,
