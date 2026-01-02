@@ -15,7 +15,7 @@ class Viewer
     flecs::entity m_model;
     flecs::entity m_camera;
 
-    glm::vec3 m_camera_position{0.f};
+    glm::vec3 m_camera_position{0.f, 0.5f, 3.f};
     glm::quat m_camera_rotation{glm::identity<glm::quat>()};
 
     float m_yaw{0.f}, m_pitch{0.f};
@@ -30,8 +30,11 @@ public:
 
         m_camera = scene.add_camera(true);
 
+#if 1
         m_model = scene.add_model(resources.load<kynetic::Model>("assets/models/DragonAttenuation.glb"));
-
+#else
+        m_model = scene.add_model(resources.load<kynetic::Model>("assets/models/bistro/Bistro.gltf"));
+#endif
         resources.refresh_mesh_buffers();
         resources.refresh_bindless_textures();
         resources.refresh_material_buffer();

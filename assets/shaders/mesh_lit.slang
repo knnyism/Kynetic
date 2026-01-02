@@ -121,8 +121,8 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
 [shader("mesh")]
 [outputtopology("triangle")]
-[numthreads(128, 1, 1)]
-void mesh_main(OutputIndices<uint3, 128> triangles, 
+[numthreads(64, 1, 1)]
+void mesh_main(OutputIndices<uint3, 64> triangles, 
                OutputVertices<CoarseVertex, 64> vertices,
                in payload MeshPayload mesh_payload,
                uint group_id: SV_GroupID, uint group_thread_id: SV_GroupThreadID)
@@ -183,11 +183,14 @@ struct Fragment
 };
 
 [shader("fragment")]
-Fragment fragment_main(CoarseVertex coarse_vertex) : SV_Target
+Fragment fragment_main(CoarseVertex coarse_vertex, float4 position : SV_Position) : SV_Target
 {
     float n_dot_l = saturate(dot(coarse_vertex.normal, -scene.sun_direction.xyz));
 
+    //float v = depth_pyramid_texture.SampleLevel(position.xy / float2(1024, 768), 2);
+
     Fragment output;
     output.color = float4(coarse_vertex.color * n_dot_l * scene.sun_color.xyz, 1.0);
+    //output.color = float4(v, v, v, 1.0);
     return output;
 }

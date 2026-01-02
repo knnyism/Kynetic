@@ -263,6 +263,7 @@ add_library(kynetic STATIC
         src/vma_usage.hpp
         src/pch.cpp
         src/pch.hpp
+        src/clusterlod.h
 )
 
 target_link_libraries(kynetic PUBLIC

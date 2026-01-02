@@ -15,6 +15,10 @@
 KX_DISABLE_WARNING_PUSH
 KX_DISABLE_WARNING_SIGNED_UNSIGNED_ASSIGNMENT_MISMATCH
 #include "meshoptimizer.h"
+
+#define CLUSTERLOD_IMPLEMENTATION
+#include "clusterlod.h"
+
 KX_DISABLE_WARNING_POP
 
 using namespace kynetic;
@@ -70,10 +74,12 @@ Mesh::Mesh(const std::filesystem::path& path,
     calculate_bounds(unindexed_positions);
 
     const size_t max_vertices = 64;
-    const size_t max_triangles = 128;
-    const float cone_weight = 0.0f;
+    const size_t min_triangles = 16;
+    const size_t max_triangles = 64;
+    const float cone_weight = 0.7f;
+    const float split_factor = 2.f;
 
-    const size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, max_triangles);
+    const size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
 
     std::vector<meshopt_Meshlet> meshlets;
     std::vector<uint32_t> meshlet_vertex_indices;
@@ -84,17 +90,19 @@ Mesh::Mesh(const std::filesystem::path& path,
     meshlet_vertex_indices.resize(max_meshlets * max_vertices);
     meshlet_triangles.resize(max_meshlets * max_triangles * 3);
 
-    m_meshlet_count = meshopt_buildMeshlets(meshlets.data(),
-                                            meshlet_vertex_indices.data(),
-                                            meshlet_triangles.data(),
-                                            indices.data(),
-                                            indices.size(),
-                                            reinterpret_cast<const float*>(positions.data()),
-                                            positions.size(),
-                                            sizeof(glm::vec4),
-                                            max_vertices,
-                                            max_triangles,
-                                            cone_weight);
+    m_meshlet_count = meshopt_buildMeshletsFlex(meshlets.data(),
+                                                meshlet_vertex_indices.data(),
+                                                meshlet_triangles.data(),
+                                                indices.data(),
+                                                indices.size(),
+                                                reinterpret_cast<const float*>(positions.data()),
+                                                positions.size(),
+                                                sizeof(glm::vec4),
+                                                max_vertices,
+                                                min_triangles,
+                                                max_triangles,
+                                                cone_weight,
+                                                split_factor);
 
     std::vector<MeshletData> meshlets_data;
 
@@ -106,6 +114,11 @@ Mesh::Mesh(const std::filesystem::path& path,
                                                                      reinterpret_cast<const float*>(positions.data()),
                                                                      positions.size(),
                                                                      sizeof(glm::vec4));
+
+        meshopt_optimizeMeshlet(meshlet_vertex_indices.data() + meshlet.vertex_offset,
+                                meshlet_triangles.data() + meshlet.triangle_offset,
+                                meshlet.triangle_count,
+                                meshlet.vertex_count);
 
         MeshletData& meshlet_data = meshlets_data.emplace_back();
 
