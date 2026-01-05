@@ -28,6 +28,45 @@ Sampler2D<float>                           depth_pyramid_texture;
 
 groupshared MeshPayload payload;
 
+float compute_screen_error(float3 world_center, float world_error, float3 camera_pos)
+{
+    float distance = length(world_center - camera_pos);
+    
+    distance = max(distance, scene.z_near);
+    
+    float screen_height = max(constants.screen_height, 1.0f);
+    
+    float projected_error = (world_error / distance) * scene.projection_11 * screen_height * 0.5;
+    
+    return projected_error;
+}
+
+bool should_render_cluster(MeshletData meshlet, LODGroupData* lod_groups, float3 camera_pos, float4x4 model, float scale)
+{
+    if (constants.force_lod > 0) return meshlet.lod_level == (constants.force_lod - 1);
+    
+    float4 world_center = mul(model, float4(meshlet.center, 1.0));
+    float distance = length(world_center.xyz - camera_pos);
+    distance = max(distance, 0.1f);
+    
+    float threshold = constants.lod_error_threshold;
+    float screen_height = max(constants.screen_height, 540.0f);
+    float proj = max(scene.projection_11, 0.1f);
+    float error_scale = proj * screen_height * 0.5f * scale / distance;
+    
+    LODGroupData this_group = lod_groups[meshlet.group_id];
+    
+    float this_screen_error = this_group.error * error_scale;
+    bool coarser_acceptable = this_screen_error <= threshold && this_group.error < 1e30f;
+    
+    if (coarser_acceptable) return false;
+
+    float child_screen_error = this_group.max_child_error * error_scale;
+    bool finer_would_render = child_screen_error > threshold && this_group.max_child_error > 0.0001f;
+
+    return !finer_would_render;
+}
+
 [shader("amplification")]
 [numthreads(32, 1, 1)]
 void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_GroupThreadID, uint draw_id: SV_DrawIndex)
@@ -37,6 +76,7 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
     InstanceData* instances = (InstanceData*)constants.instances;
     MeshletData* meshlets = (MeshletData*)draw.meshlets;
+    LODGroupData* lod_groups = (LODGroupData*)draw.lod_groups;
 
     uint meshlet_index = group_id * 32 + group_thread_id;
 
@@ -65,6 +105,8 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
         accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
         accept = accept && is_visible(cull_vp, center.xyz, radius);
+
+        if (accept) accept = should_render_cluster(meshlet, lod_groups, cull_camera_pos, instance.model, scale);
 
         float4 aabb;
 
@@ -104,13 +146,11 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
             }
         }
 
-         accept = accept && occlusion_visible;
+        accept = accept && occlusion_visible;
     }
 
     uint index = WavePrefixCountBits(accept);
     uint count = WaveActiveCountBits(accept);
-    
-    uint meshlets_in_wave = WaveActiveCountBits(meshlet_index < draw.meshlet_count);
 
     if (accept) payload.meshlet_indices[index] = meshlet_index;
 
@@ -187,10 +227,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex, float4 position : SV_Position
 {
     float n_dot_l = saturate(dot(coarse_vertex.normal, -scene.sun_direction.xyz));
 
-    //float v = depth_pyramid_texture.SampleLevel(position.xy / float2(1024, 768), 2);
-
     Fragment output;
     output.color = float4(coarse_vertex.color * n_dot_l * scene.sun_color.xyz, 1.0);
-    //output.color = float4(v, v, v, 1.0);
     return output;
 }

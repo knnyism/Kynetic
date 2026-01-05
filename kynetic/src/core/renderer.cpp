@@ -295,6 +295,16 @@ void Renderer::render()
         combo_enum(m_rendering_method);
 
         ImGui::Separator();
+        ImGui::Text("LOD Settings");
+        ImGui::SliderFloat("Error Threshold (px)", &debug_settings.lod_error_threshold, 0.1f, 10.0f, "%.1f");
+        ImGui::SliderInt("Force LOD",
+                         reinterpret_cast<int*>(&debug_settings.force_lod),
+                         0,
+                         8,
+                         debug_settings.force_lod == 0 ? "Auto" : "%d");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("0 = Automatic LOD selection, 1+ = Force specific LOD level");
+
+        ImGui::Separator();
         ImGui::Text("Meshlet Debug");
 
         bool was_paused = debug_settings.pause_culling;
@@ -437,6 +447,10 @@ void Renderer::render()
             push_constants.draws = scene.get_mesh_draw_data_buffer_address();
             push_constants.materials = resources.m_material_buffer_address;
             push_constants.instances = scene.get_instance_buffer_address();
+            push_constants.lod_error_threshold = debug_settings.lod_error_threshold;
+            push_constants.camera_fov_y = scene.get_camera_fovy();
+            push_constants.screen_height = static_cast<float>(draw_extent.height);
+            push_constants.force_lod = debug_settings.force_lod;
 
             ctx.dcb.set_push_constants(
                 VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,

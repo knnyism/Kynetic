@@ -35,106 +35,174 @@ Mesh::Mesh(const std::filesystem::path& path,
       m_vertex_count(static_cast<uint32_t>(unindexed_vertices.size())),
       m_material(std::move(material))
 {
-    /*size_t index_count = unindexed_indices.size();
-    size_t unindexed_vertex_count = unindexed_positions.size();
-    std::vector<unsigned int> remap(unindexed_vertex_count);
-    size_t vertex_count = meshopt_generateVertexRemap(remap.data(),
-                                                      unindexed_indices.data(),
-                                                      index_count,
-                                                      unindexed_positions.data(),
-                                                      unindexed_vertex_count,
-                                                      sizeof(glm::vec4));*/
-
     std::span<glm::vec4>& positions = unindexed_positions;
     std::span<uint32_t>& indices = unindexed_indices;
 
-    /*meshopt_remapIndexBuffer(indices.data(), unindexed_indices.data(), index_count, remap.data());
-    meshopt_remapVertexBuffer(positions.data(),
-                              unindexed_vertices.data(),
-                              unindexed_vertex_count,
-                              sizeof(glm::vec4),
-                              remap.data());*/
-
-    /*meshopt_optimizeVertexCache(indices.data(), indices.data(), index_count, vertex_count);
-    meshopt_optimizeOverdraw(indices.data(),
-                             indices.data(),
-                             index_count,
-                             &positions[0].x,
-                             vertex_count,
-                             sizeof(glm::vec4),
-                             1.05f);
-
-    meshopt_optimizeVertexFetch(positions.data(),
-                                indices.data(),
-                                index_count,
-                                positions.data(),
-                                vertex_count,
-                                sizeof(glm::vec4));*/
-
     calculate_bounds(unindexed_positions);
 
-    const size_t max_vertices = 64;
-    const size_t min_triangles = 16;
-    const size_t max_triangles = 64;
-    const float cone_weight = 0.7f;
-    const float split_factor = 2.f;
+    clodConfig config = clodDefaultConfig(64);
 
-    const size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
+    clodMesh mesh{};
+    mesh.indices = indices.data();
+    mesh.index_count = indices.size();
+    mesh.vertex_count = positions.size();
+    mesh.vertex_positions = reinterpret_cast<const float*>(positions.data());
+    mesh.vertex_positions_stride = sizeof(glm::vec4);
 
-    std::vector<meshopt_Meshlet> meshlets;
-    std::vector<uint32_t> meshlet_vertex_indices;
+    mesh.vertex_attributes = nullptr;
+    mesh.vertex_attributes_stride = 0;
+    mesh.attribute_weights = nullptr;
+    mesh.attribute_count = 0;
+    mesh.vertex_lock = nullptr;
+    mesh.attribute_protect_mask = 0;
+
+    std::vector<MeshletData> meshlets;
+    std::vector<LODGroupData> lod_groups;
+    std::vector<uint32_t> meshlet_vertices;
     std::vector<uint8_t> meshlet_triangles;
 
-    meshlets.resize(max_meshlets);
+    std::vector<std::vector<int>> child_groups;
 
-    meshlet_vertex_indices.resize(max_meshlets * max_vertices);
-    meshlet_triangles.resize(max_meshlets * max_triangles * 3);
+    uint32_t current_vertex_offset{0};
+    uint32_t current_triangle_offset{0};
+    uint32_t max_depth{0};
 
-    m_meshlet_count = meshopt_buildMeshletsFlex(meshlets.data(),
-                                                meshlet_vertex_indices.data(),
-                                                meshlet_triangles.data(),
-                                                indices.data(),
-                                                indices.size(),
-                                                reinterpret_cast<const float*>(positions.data()),
-                                                positions.size(),
-                                                sizeof(glm::vec4),
-                                                max_vertices,
-                                                min_triangles,
-                                                max_triangles,
-                                                cone_weight,
-                                                split_factor);
+    clodBuild(config,
+              mesh,
+              [&](clodGroup group, const clodCluster* clusters, size_t cluster_count) -> int
+              {
+                  int group_id = static_cast<int>(lod_groups.size());
 
-    std::vector<MeshletData> meshlets_data;
+                  LODGroupData lod_group{};
+                  lod_group.center =
+                      glm::vec3(group.simplified.center[0], group.simplified.center[1], group.simplified.center[2]);
+                  lod_group.radius = group.simplified.radius;
+                  lod_group.error = group.simplified.error;
+                  lod_group.max_child_error = 0.0f;
+                  lod_group.depth = group.depth;
+                  lod_group.cluster_start = static_cast<uint32_t>(meshlets.size());
+                  lod_group.cluster_count = static_cast<uint32_t>(cluster_count);
+                  lod_group.pad0 = 0;
+
+                  lod_groups.push_back(lod_group);
+                  child_groups.emplace_back();
+                  max_depth = std::max(max_depth, static_cast<uint32_t>(group.depth));
+
+                  for (size_t i = 0; i < cluster_count; ++i)
+                  {
+                      const clodCluster& cluster = clusters[i];
+                      int parent_group = cluster.refined;
+
+                      if (parent_group >= 0 && parent_group < static_cast<int>(child_groups.size()))
+                          child_groups[parent_group].push_back(group_id);
+                  }
+
+                  lod_groups.push_back(lod_group);
+                  max_depth = std::max(max_depth, static_cast<uint32_t>(group.depth));
+
+                  for (size_t i = 0; i < cluster_count; ++i)
+                  {
+                      const clodCluster& cluster = clusters[i];
+
+                      MeshletData meshlet{};
+
+                      meshlet.center = glm::vec3(cluster.bounds.center[0], cluster.bounds.center[1], cluster.bounds.center[2]);
+                      meshlet.radius = cluster.bounds.radius;
+
+                      meshlet.group_id = group_id;
+                      meshlet.parent_group_id = cluster.refined;
+                      meshlet.lod_level = static_cast<uint8_t>(group.depth);
+                      meshlet.lod_error = cluster.bounds.error;
+
+                      float parent_err = group.simplified.error;
+                      if (parent_err < cluster.bounds.error + 0.0001f && parent_err < 1e30f)
+                          parent_err = std::numeric_limits<float>::max();
+
+                      meshlet.parent_error = parent_err;
+
+                      size_t triangle_count = cluster.index_count / 3;
+                      std::vector<unsigned int> local_vertices(cluster.vertex_count);
+                      std::vector<unsigned char> local_triangles(cluster.index_count);
+
+                      size_t unique_verts =
+                          clodLocalIndices(local_vertices.data(), local_triangles.data(), cluster.indices, cluster.index_count);
+
+                      meshlet.vertex_offset = current_vertex_offset;
+                      meshlet.triangle_offset = current_triangle_offset;
+                      meshlet.vertex_count = static_cast<uint8_t>(std::min(unique_verts, size_t(255)));
+                      meshlet.triangle_count = static_cast<uint8_t>(std::min(triangle_count, size_t(255)));
+
+                      for (size_t v = 0; v < unique_verts; ++v) meshlet_vertices.push_back(local_vertices[v]);
+                      current_vertex_offset += static_cast<uint32_t>(unique_verts);
+
+                      for (size_t t = 0; t < cluster.index_count; ++t) meshlet_triangles.push_back(local_triangles[t]);
+                      current_triangle_offset += static_cast<uint32_t>(cluster.index_count);
+
+                      meshlets.push_back(meshlet);
+                  }
+
+                  return group_id;
+              });
+
+    m_meshlet_count = meshlets.size();
+    m_lod_group_count = lod_groups.size();
+    m_max_lod_level = max_depth;
+
+    fmt::print("Mesh '{}': {} clusters, {} LOD groups, {} levels\n",
+               path.string(),
+               m_meshlet_count,
+               m_lod_group_count,
+               m_max_lod_level + 1);
+
+    for (uint32_t level = 0; level <= m_max_lod_level; ++level)
+    {
+        float min_error = FLT_MAX, max_error = 0.0f;
+        float min_parent = FLT_MAX, max_parent = 0.0f;
+        uint32_t count = 0;
+        for (const auto& m : meshlets)
+        {
+            if (m.lod_level == level)
+            {
+                min_error = std::min(min_error, m.lod_error);
+                max_error = std::max(max_error, m.lod_error);
+                min_parent = std::min(min_parent, m.parent_error);
+                max_parent = std::max(max_parent, m.parent_error);
+                count++;
+            }
+        }
+        fmt::print("  LOD {}: {} clusters, error=[{:.4f}, {:.4f}], parent_error=[{:.4f}, {:.4f}]\n",
+                   level,
+                   count,
+                   min_error,
+                   max_error,
+                   min_parent,
+                   max_parent);
+    }
 
     for (auto& meshlet : meshlets)
     {
-        meshopt_Bounds meshlet_bounds = meshopt_computeMeshletBounds(meshlet_vertex_indices.data() + meshlet.vertex_offset,
-                                                                     meshlet_triangles.data() + meshlet.triangle_offset,
-                                                                     meshlet.triangle_count,
-                                                                     reinterpret_cast<const float*>(positions.data()),
-                                                                     positions.size(),
-                                                                     sizeof(glm::vec4));
+        if (meshlet.triangle_count == 0) continue;
 
-        meshopt_optimizeMeshlet(meshlet_vertex_indices.data() + meshlet.vertex_offset,
-                                meshlet_triangles.data() + meshlet.triangle_offset,
-                                meshlet.triangle_count,
-                                meshlet.vertex_count);
+        std::vector<unsigned int> meshlet_indices;
+        meshlet_indices.reserve(meshlet.triangle_count * 3);
 
-        MeshletData& meshlet_data = meshlets_data.emplace_back();
+        for (uint32_t t = 0; t < meshlet.triangle_count * 3; ++t)
+        {
+            uint8_t local_idx = meshlet_triangles[meshlet.triangle_offset + t];
+            uint32_t global_idx = meshlet_vertices[meshlet.vertex_offset + local_idx];
+            meshlet_indices.push_back(global_idx);
+        }
 
-        meshlet_data.center = glm::vec3(meshlet_bounds.center[0], meshlet_bounds.center[1], meshlet_bounds.center[2]);
-        meshlet_data.radius = meshlet_bounds.radius;
+        meshopt_Bounds bounds = meshopt_computeClusterBounds(meshlet_indices.data(),
+                                                             meshlet_indices.size(),
+                                                             reinterpret_cast<const float*>(positions.data()),
+                                                             positions.size(),
+                                                             sizeof(glm::vec4));
 
-        meshlet_data.cone_axis[0] = meshlet_bounds.cone_axis_s8[0];
-        meshlet_data.cone_axis[1] = meshlet_bounds.cone_axis_s8[1];
-        meshlet_data.cone_axis[2] = meshlet_bounds.cone_axis_s8[2];
-
-        meshlet_data.cone_cutoff = meshlet_bounds.cone_cutoff_s8;
-
-        meshlet_data.vertex_offset = meshlet.vertex_offset;
-        meshlet_data.triangle_offset = meshlet.triangle_offset;
-        meshlet_data.vertex_count = static_cast<uint8_t>(meshlet.vertex_count);
-        meshlet_data.triangle_count = static_cast<uint8_t>(meshlet.triangle_count);
+        meshlet.cone_axis[0] = bounds.cone_axis_s8[0];
+        meshlet.cone_axis[1] = bounds.cone_axis_s8[1];
+        meshlet.cone_axis[2] = bounds.cone_axis_s8[2];
+        meshlet.cone_cutoff = bounds.cone_cutoff_s8;
     }
 
     Device& device = Engine::get().device();
@@ -143,9 +211,10 @@ Mesh::Mesh(const std::filesystem::path& path,
     const size_t position_buffer_size = positions.size() * sizeof(glm::vec4);
     const size_t vertex_buffer_size = unindexed_vertices.size() * sizeof(Vertex);
 
-    const size_t meshlet_buffer_size = meshlets_data.size() * sizeof(MeshletData);
-    const size_t meshlet_vertices_buffer_size = meshlet_vertex_indices.size() * sizeof(uint32_t);
+    const size_t meshlet_buffer_size = meshlets.size() * sizeof(MeshletData);
+    const size_t meshlet_vertices_buffer_size = meshlet_vertices.size() * sizeof(uint32_t);
     const size_t meshlet_triangles_buffer_size = meshlet_triangles.size() * sizeof(uint8_t);
+    const size_t lod_groups_buffer_size = lod_groups.size() * sizeof(LODGroupData);
 
     m_index_buffer = device.create_buffer(index_buffer_size,
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -210,8 +279,18 @@ Mesh::Mesh(const std::filesystem::path& path,
         m_meshlet_triangles_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
     }
 
+    m_lod_groups_buffer = device.create_buffer(lod_groups_buffer_size,
+                                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                               VMA_MEMORY_USAGE_GPU_ONLY);
+    {
+        VkBufferDeviceAddressInfo device_address_info{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                      .buffer = m_lod_groups_buffer.buffer};
+        m_lod_groups_buffer_address = vkGetBufferDeviceAddress(device.get(), &device_address_info);
+    }
+
     const size_t total_staging_size = index_buffer_size + position_buffer_size + vertex_buffer_size + meshlet_buffer_size +
-                                      meshlet_vertices_buffer_size + meshlet_triangles_buffer_size;
+                                      meshlet_vertices_buffer_size + meshlet_triangles_buffer_size + lod_groups_buffer_size;
 
     AllocatedBuffer staging =
         device.create_buffer(total_staging_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -229,13 +308,16 @@ Mesh::Mesh(const std::filesystem::path& path,
     memcpy(static_cast<char*>(data) + offset, unindexed_vertices.data(), vertex_buffer_size);
     offset += vertex_buffer_size;
 
-    memcpy(static_cast<char*>(data) + offset, meshlets_data.data(), meshlet_buffer_size);
+    memcpy(static_cast<char*>(data) + offset, meshlets.data(), meshlet_buffer_size);
     offset += meshlet_buffer_size;
 
-    memcpy(static_cast<char*>(data) + offset, meshlet_vertex_indices.data(), meshlet_vertices_buffer_size);
+    memcpy(static_cast<char*>(data) + offset, meshlet_vertices.data(), meshlet_vertices_buffer_size);
     offset += meshlet_vertices_buffer_size;
 
     memcpy(static_cast<char*>(data) + offset, meshlet_triangles.data(), meshlet_triangles_buffer_size);
+    offset += meshlet_triangles_buffer_size;
+
+    memcpy(static_cast<char*>(data) + offset, lod_groups.data(), lod_groups_buffer_size);
 
     vmaUnmapMemory(device.get_allocator(), staging.allocation);
 
@@ -284,6 +366,13 @@ Mesh::Mesh(const std::filesystem::path& path,
             meshlet_triangles_copy.srcOffset = src_offset;
             meshlet_triangles_copy.size = meshlet_triangles_buffer_size;
             cmd.copy_buffer(staging.buffer, m_meshlet_triangles_buffer.buffer, 1, &meshlet_triangles_copy);
+            src_offset += meshlet_triangles_buffer_size;
+
+            VkBufferCopy lod_groups_copy{};
+            lod_groups_copy.dstOffset = 0;
+            lod_groups_copy.srcOffset = src_offset;
+            lod_groups_copy.size = lod_groups_buffer_size;
+            cmd.copy_buffer(staging.buffer, m_lod_groups_buffer.buffer, 1, &lod_groups_copy);
         });
 
     device.destroy_buffer(staging);
@@ -300,6 +389,7 @@ Mesh::~Mesh()
     device.destroy_buffer(m_meshlet_buffer);
     device.destroy_buffer(m_meshlet_vertices_buffer);
     device.destroy_buffer(m_meshlet_triangles_buffer);
+    device.destroy_buffer(m_lod_groups_buffer);
 }
 
 void Mesh::calculate_bounds(const std::span<glm::vec4>& positions)

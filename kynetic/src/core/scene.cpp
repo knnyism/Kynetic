@@ -222,6 +222,7 @@ void Scene::update()
             m_view = glm::inverse(transform.transform);
             m_projection = glm::perspective(camera.fovy, aspect * camera.aspect, camera.far_plane, camera.near_plane);
             m_projection[1][1] *= -1;
+            m_camera_fovy = camera.fovy;
         });
 
     m_draws.clear();
@@ -248,6 +249,7 @@ void Scene::update()
             instance.material_index = m.mesh->get_material()->get_handle();
 
             uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
+            uint32_t lod_group_count = static_cast<uint32_t>(m.mesh->get_lod_group_count());
 
             MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
             draw_data.positions = m.mesh->get_position_buffer_address();
@@ -255,8 +257,10 @@ void Scene::update()
             draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
             draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
             draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
+            draw_data.lod_groups = m.mesh->get_lod_groups_buffer_address();
             draw_data.instance_index = instance_index;
             draw_data.meshlet_count = meshlet_count;
+            draw_data.lod_group_count = lod_group_count;
 
             VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
             indirect_cmd.groupCountX = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));

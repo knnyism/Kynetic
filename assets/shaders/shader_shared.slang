@@ -4,6 +4,24 @@ static constexpr float PI = 3.14159265358979323846f;
 static constexpr float EPSILON = 1e-6f;
 static constexpr float GOLDEN_RATIO = 0.618033988749895f;
 
+// LOD level color palette for debugging
+static const float3 LOD_COLORS[8] = {
+    float3(0.0, 1.0, 0.0),   // LOD 0 - Green (original)
+    float3(0.0, 0.8, 0.4),   // LOD 1
+    float3(0.0, 0.6, 0.8),   // LOD 2
+    float3(0.0, 0.4, 1.0),   // LOD 3
+    float3(0.4, 0.2, 1.0),   // LOD 4
+    float3(0.8, 0.0, 1.0),   // LOD 5
+    float3(1.0, 0.0, 0.6),   // LOD 6
+    float3(1.0, 0.0, 0.0),   // LOD 7+ - Red (coarsest)
+};
+
+float3 get_lod_color(uint lod_level)
+{
+    uint idx = min(lod_level, 7);
+    return LOD_COLORS[idx];
+}
+
 float3 get_pastel_color(uint index)
 {
     float hue = frac(float(index) * GOLDEN_RATIO);

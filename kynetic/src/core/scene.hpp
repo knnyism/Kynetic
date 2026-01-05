@@ -26,6 +26,9 @@ struct DebugSettings
 
     uint32_t total_meshlets{0};
     uint32_t visible_meshlets{0};
+
+    float lod_error_threshold{1.0f};
+    uint32_t force_lod{0};  // 0 = auto, 1+ = force specific level
 };
 
 class Scene
@@ -66,6 +69,7 @@ class Scene
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
     glm::mat4 m_previous_vp = glm::mat4(1.0f);
+    float m_camera_fovy{70.0f};
 
     DebugSettings m_debug_settings;
 
@@ -86,6 +90,7 @@ public:
 
     [[nodiscard]] glm::mat4 get_projection() const { return m_projection; }
     [[nodiscard]] glm::mat4 get_view() const { return m_view; }
+    [[nodiscard]] float get_camera_fovy() const { return m_camera_fovy; }
 
     [[nodiscard]] const std::vector<VkDrawIndexedIndirectCommand>& get_draws() const { return m_draws; }
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draws.size()); }

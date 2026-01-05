@@ -47,8 +47,11 @@ struct MeshDrawData
     VkDeviceAddress meshlets;
     VkDeviceAddress meshlet_vertices;
     VkDeviceAddress meshlet_triangles;
+    VkDeviceAddress lod_groups;
     uint32_t instance_index;
     uint32_t meshlet_count;
+    uint32_t lod_group_count;
+    uint32_t pad0;
 };
 
 struct MeshDrawPushConstants
@@ -56,6 +59,10 @@ struct MeshDrawPushConstants
     VkDeviceAddress draws;
     VkDeviceAddress instances;
     VkDeviceAddress materials;
+    float lod_error_threshold;  // Screen-space error threshold in pixels
+    float camera_fov_y;
+    float screen_height;
+    uint32_t force_lod;  // 0 = auto, 1+ = force specific LOD level
 };
 
 struct DrawPushConstants
@@ -125,6 +132,25 @@ struct MeshletData
     uint32_t triangle_offset;
     uint8_t vertex_count;
     uint8_t triangle_count;
+    uint8_t lod_level;
+    uint8_t pad0;
+
+    int32_t group_id;
+    int32_t parent_group_id;
+    float lod_error;
+    float parent_error;
+};
+
+struct LODGroupData
+{
+    float3 center;
+    float radius;
+    float error;
+    float max_child_error;
+    int32_t depth;
+    uint32_t cluster_start;
+    uint32_t cluster_count;
+    uint32_t pad0;
 };
 
 struct DebugLineVertex
@@ -148,7 +174,8 @@ struct MeshletDebugData
     float3 cone_axis;
     float cone_cutoff;
     uint32_t is_visible;
-    uint32_t pad0, pad1, pad2;
+    uint32_t lod_level;
+    uint32_t pad0, pad1;
 };
 
 struct DebugMeshletPushConstants
