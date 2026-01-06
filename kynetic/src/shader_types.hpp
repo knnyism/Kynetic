@@ -31,6 +31,14 @@ enum class RenderChannel
     Occlusion
 };
 
+enum class DebugMeshletRenderMode
+{
+    Lods,
+    Groups,
+    Cluster,
+    Triangle,
+};
+
 struct Vertex
 {
     float3 normal;
@@ -61,8 +69,12 @@ struct MeshDrawPushConstants
     VkDeviceAddress materials;
     float lod_error_threshold;  // Screen-space error threshold in pixels
     float camera_fov_y;
+    float screen_width;
     float screen_height;
     uint32_t force_lod;  // 0 = auto, 1+ = force specific LOD level
+    DebugMeshletRenderMode meshlet_render_mode;
+
+    float pad0, pad1;
 };
 
 struct DrawPushConstants
@@ -137,6 +149,7 @@ struct MeshletData
 
     int32_t group_id;
     int32_t parent_group_id;
+
     float lod_error;
     float parent_error;
 };
@@ -146,11 +159,9 @@ struct LODGroupData
     float3 center;
     float radius;
     float error;
-    float max_child_error;
     int32_t depth;
     uint32_t cluster_start;
     uint32_t cluster_count;
-    uint32_t pad0;
 };
 
 struct DebugLineVertex

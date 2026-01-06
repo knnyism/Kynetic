@@ -34,6 +34,7 @@ class Renderer
     float m_render_scale{1.f};
     RenderMode m_rendering_method{RenderMode::CpuDriven};
     RenderChannel m_render_channel{RenderChannel::Final};
+    DebugMeshletRenderMode m_meshlet_render_mode{DebugMeshletRenderMode::Cluster};
 
     VkExtent2D m_last_device_extent;
     float m_last_render_scale{1.f};

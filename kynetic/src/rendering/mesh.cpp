@@ -78,27 +78,11 @@ Mesh::Mesh(const std::filesystem::path& path,
                       glm::vec3(group.simplified.center[0], group.simplified.center[1], group.simplified.center[2]);
                   lod_group.radius = group.simplified.radius;
                   lod_group.error = group.simplified.error;
-                  lod_group.max_child_error = 0.0f;
                   lod_group.depth = group.depth;
                   lod_group.cluster_start = static_cast<uint32_t>(meshlets.size());
                   lod_group.cluster_count = static_cast<uint32_t>(cluster_count);
-                  lod_group.pad0 = 0;
 
                   lod_groups.push_back(lod_group);
-                  child_groups.emplace_back();
-                  max_depth = std::max(max_depth, static_cast<uint32_t>(group.depth));
-
-                  for (size_t i = 0; i < cluster_count; ++i)
-                  {
-                      const clodCluster& cluster = clusters[i];
-                      int parent_group = cluster.refined;
-
-                      if (parent_group >= 0 && parent_group < static_cast<int>(child_groups.size()))
-                          child_groups[parent_group].push_back(group_id);
-                  }
-
-                  lod_groups.push_back(lod_group);
-                  max_depth = std::max(max_depth, static_cast<uint32_t>(group.depth));
 
                   for (size_t i = 0; i < cluster_count; ++i)
                   {
@@ -113,12 +97,7 @@ Mesh::Mesh(const std::filesystem::path& path,
                       meshlet.parent_group_id = cluster.refined;
                       meshlet.lod_level = static_cast<uint8_t>(group.depth);
                       meshlet.lod_error = cluster.bounds.error;
-
-                      float parent_err = group.simplified.error;
-                      if (parent_err < cluster.bounds.error + 0.0001f && parent_err < 1e30f)
-                          parent_err = std::numeric_limits<float>::max();
-
-                      meshlet.parent_error = parent_err;
+                      meshlet.parent_error = group.simplified.error;
 
                       size_t triangle_count = cluster.index_count / 3;
                       std::vector<unsigned int> local_vertices(cluster.vertex_count);
@@ -129,8 +108,8 @@ Mesh::Mesh(const std::filesystem::path& path,
 
                       meshlet.vertex_offset = current_vertex_offset;
                       meshlet.triangle_offset = current_triangle_offset;
-                      meshlet.vertex_count = static_cast<uint8_t>(std::min(unique_verts, size_t(255)));
-                      meshlet.triangle_count = static_cast<uint8_t>(std::min(triangle_count, size_t(255)));
+                      meshlet.vertex_count = static_cast<uint8_t>(std::min(unique_verts, static_cast<size_t>(255)));
+                      meshlet.triangle_count = static_cast<uint8_t>(std::min(triangle_count, static_cast<size_t>(255)));
 
                       for (size_t v = 0; v < unique_verts; ++v) meshlet_vertices.push_back(local_vertices[v]);
                       current_vertex_offset += static_cast<uint32_t>(unique_verts);

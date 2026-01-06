@@ -293,6 +293,7 @@ void Renderer::render()
         ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
         combo_enum(m_render_channel);
         combo_enum(m_rendering_method);
+        combo_enum(m_meshlet_render_mode);
 
         ImGui::Separator();
         ImGui::Text("LOD Settings");
@@ -449,8 +450,10 @@ void Renderer::render()
             push_constants.instances = scene.get_instance_buffer_address();
             push_constants.lod_error_threshold = debug_settings.lod_error_threshold;
             push_constants.camera_fov_y = scene.get_camera_fovy();
+            push_constants.screen_width = static_cast<float>(draw_extent.width);
             push_constants.screen_height = static_cast<float>(draw_extent.height);
             push_constants.force_lod = debug_settings.force_lod;
+            push_constants.meshlet_render_mode = m_meshlet_render_mode;
 
             ctx.dcb.set_push_constants(
                 VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
