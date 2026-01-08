@@ -3,7 +3,7 @@
 struct CoarseVertex
 {
     float4               position : SV_Position;
-    float3               color;
+    nointerpolation float3 color;
     float2               uv;
 
     float3               tangent;
@@ -28,6 +28,45 @@ Sampler2D<float>                           depth_pyramid_texture;
 
 groupshared MeshPayload payload;
 
+// From clusterlod.h
+// camera_proj is projection[1][1], or cot(fovy/2); camera_znear is *positive* near plane distance
+// (0..1; multiply by screen height to get pixels) approximate (perspective) projection error of a cluster in screen space
+// bounds.error / max(distance(bounds.center, camera_position) - bounds.radius, camera_znear) * (camera_proj * 0.5f)
+float get_error_in_screen_space(float3 world_center, float world_radius, float world_error, float3 camera_position)
+{   
+    float dist = distance(world_center, camera_position) - world_radius;
+    dist = max(dist, scene.z_near);
+
+    return constants.screen_height * world_error / (dist * 2.0f * tan(constants.camera_fov_y * 0.5f));
+
+    // this did not work for some reason lol
+    // return constants.screen_height * world_error / dist * (scene.projection_11 * 0.5f);
+}
+
+bool is_lod_selected(MeshletData meshlet, LODGroupData *lod_groups, float4x4 transform,  float3 camera_position, float scale)
+{
+    if (constants.force_lod > 0) return meshlet.lod_level == (constants.force_lod - 1);
+
+    // From clusterlod.h
+    // cluster should be rendered if:
+    // 1. clodGroup::simplified for the group it's in is over error threshold
+    // 2. cluster.refined is -1 *or* clodGroup::simplified for groups[cluster.refined].simplified is at or under error threshold
+
+    LODGroupData cluster_group = lod_groups[meshlet.group_id];
+
+    float4 cluster_center = mul(transform, float4(cluster_group.center, 1.0));
+    float cluster_error = get_error_in_screen_space(cluster_center.xyz, cluster_group.radius * scale, cluster_group.error * scale, camera_position);
+
+    if (meshlet.parent_group_id == -1) return cluster_error > constants.lod_error_threshold;
+
+    LODGroupData refined_group = lod_groups[meshlet.parent_group_id];
+
+    float4 refined_center = mul(transform, float4(refined_group.center, 1.0));
+    float refined_error = get_error_in_screen_space(refined_center.xyz, refined_group.radius * scale, refined_group.error * scale, camera_position);
+
+    return cluster_error > constants.lod_error_threshold && refined_error <= constants.lod_error_threshold;
+}
+
 [shader("amplification")]
 [numthreads(32, 1, 1)]
 void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_GroupThreadID, uint draw_id: SV_DrawIndex)
@@ -51,59 +90,60 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
         InstanceData instance = instances[draw.instance_index];
 
         float4 center = mul(instance.model, float4(meshlet.center, 1.0));
+        
         float scale_x = length(float3(instance.model[0][0], instance.model[1][0], instance.model[2][0]));
         float scale_y = length(float3(instance.model[0][1], instance.model[1][1], instance.model[2][1]));
         float scale_z = length(float3(instance.model[0][2], instance.model[1][2], instance.model[2][2]));
-
         float scale = max(scale_x, max(scale_y, scale_z));
         float radius = meshlet.radius * scale;
 
-        float3 cone_axis = normalize(mul(float3x3(instance.model), float3(int(meshlet.cone_axis[0]) / 127.0,
-                                                                          int(meshlet.cone_axis[1]) / 127.0,
-                                                                          int(meshlet.cone_axis[2]) / 127.0)));
-        float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
+        LODGroupData* lod_groups = (LODGroupData*)draw.lod_groups;
 
-        accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
-        accept = accept && is_visible(cull_vp, center.xyz, radius);
+        accept = is_lod_selected(meshlet, lod_groups, instance.model, cull_camera_pos, scale);
 
-        float4 aabb;
-
-        bool occlusion_visible = true;
         if (accept) {
-            float4x4 cull_view = scene.use_debug_culling > 0 ? scene.debug_view : scene.view;
-            float4 view_center = mul(cull_view, center);
+            float3 cone_axis = normalize(mul(float3x3(instance.model), float3(
+                int(meshlet.cone_axis[0]) / 127.0,
+                int(meshlet.cone_axis[1]) / 127.0,
+                int(meshlet.cone_axis[2]) / 127.0)));
+            float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
 
-            if (project_sphere(view_center.xyz, radius, scene.z_near, scene.projection_00, scene.projection_11, aabb))
+            accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
+            accept = accept && is_visible(cull_vp, center.xyz, radius);
+
+            float4 aabb;
+            if (accept)
             {
-                float width;
-                float height;
+                float4x4 cull_view = scene.use_debug_culling > 0 ? scene.debug_view : scene.view;
+                float4 view_center = mul(cull_view, center);
 
-                depth_pyramid_texture.GetDimensions(width, height);
+                if (project_sphere(view_center.xyz, radius, scene.z_near, scene.projection_00, scene.projection_11, aabb))
+                {
+                    float width;
+                    float height;
+                    depth_pyramid_texture.GetDimensions(width, height);
 
-                float aabb_width = (aabb.z - aabb.x) * width;
-                float aabb_height = (aabb.w - aabb.y) * height;
+                    float aabb_width = (aabb.z - aabb.x) * width;
+                    float aabb_height = (aabb.w - aabb.y) * height;
 
-                float level = floor(log2(max(aabb_width, aabb_height)));
+                    float level = floor(log2(max(aabb_width, aabb_height)));
 
-                float2 uv = (aabb.xy + aabb.zw) * 0.5;
+                    float2 uv = (aabb.xy + aabb.zw) * 0.5;
 
-                // min cuz reverse-z!!!!
-                float depth = depth_pyramid_texture.SampleLevel(uv, level);
-                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.y), level));
-                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.w), level));
-                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.w), level));
-                depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.y), level));
+                    float depth = depth_pyramid_texture.SampleLevel(uv, level);
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.y), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.w), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.w), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.y), level));
 
-                float3 dir = normalize(cull_camera_pos - center.xyz);
+                    float3 dir = normalize(cull_camera_pos - center.xyz);
+                    float4 sphere_clip = mul(scene.previous_vp, float4(center.xyz + dir * radius, 1.0));
+                    float depth_sphere = sphere_clip.z / sphere_clip.w;
 
-                float4 sphere_clip = mul(scene.previous_vp, float4(center.xyz + dir * radius, 1.0));
-                float depth_sphere = sphere_clip.z / sphere_clip.w;
-
-                occlusion_visible = (depth_sphere >= depth);
+                    accept = (depth_sphere >= depth);
+                }
             }
         }
-
-        accept = accept && occlusion_visible;
     }
 
     uint index = WavePrefixCountBits(accept);
@@ -113,16 +153,19 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
     payload.draw_index = draw_id;
 
-    if (group_thread_id == 0 && count > 0) DispatchMesh(count, 1, 1, payload);
+    if (group_thread_id == 0 && count > 0)
+        DispatchMesh(count, 1, 1, payload);
 }
 
 [shader("mesh")]
 [outputtopology("triangle")]
 [numthreads(64, 1, 1)]
-void mesh_main(OutputIndices<uint3, 64> triangles, 
-               OutputVertices<CoarseVertex, 64> vertices,
-               in payload MeshPayload mesh_payload,
-               uint group_id: SV_GroupID, uint group_thread_id: SV_GroupThreadID)
+void mesh_main(
+    OutputIndices<uint3, 64> triangles, 
+    OutputVertices<CoarseVertex, 64> vertices,
+    in payload MeshPayload mesh_payload,
+    uint group_id: SV_GroupID,
+    uint group_thread_id: SV_GroupThreadID)
 {
     MeshDrawData* draws = (MeshDrawData*)constants.draws;
     MeshDrawData draw = draws[mesh_payload.draw_index];
@@ -156,26 +199,21 @@ void mesh_main(OutputIndices<uint3, 64> triangles,
         switch (constants.meshlet_render_mode)
         {
         case DebugMeshletRenderMode::Lods:
-        {
             vertices[group_thread_id].color = get_lod_color(meshlet.lod_level);
-        }
-        break;
+            break;
         case DebugMeshletRenderMode::Groups:
-        {
             vertices[group_thread_id].color = get_pastel_color(meshlet.group_id);
-        }
-        break;
+            break;
         case DebugMeshletRenderMode::Cluster:
-        {
             vertices[group_thread_id].color = get_pastel_color(meshlet_index);
-        }
-        break;
+            break;
         case DebugMeshletRenderMode::Triangle:
-        {
             vertices[group_thread_id].color = get_pastel_color(group_thread_id);
+            break;
+        case DebugMeshletRenderMode::Solid:
+            vertices[group_thread_id].color = get_pastel_color(draw.instance_index);
+            break;
         }
-        break;
-        };
 
         vertices[group_thread_id].uv = float2(v.uv_x, v.uv_y);
 

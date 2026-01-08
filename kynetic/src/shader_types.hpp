@@ -37,6 +37,7 @@ enum class DebugMeshletRenderMode
     Groups,
     Cluster,
     Triangle,
+    Solid
 };
 
 struct Vertex

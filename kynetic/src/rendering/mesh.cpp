@@ -42,6 +42,8 @@ Mesh::Mesh(const std::filesystem::path& path,
 
     clodConfig config = clodDefaultConfig(64);
 
+    // const float weights[13] = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
+
     clodMesh mesh{};
     mesh.indices = indices.data();
     mesh.index_count = indices.size();
@@ -49,6 +51,10 @@ Mesh::Mesh(const std::filesystem::path& path,
     mesh.vertex_positions = reinterpret_cast<const float*>(positions.data());
     mesh.vertex_positions_stride = sizeof(glm::vec4);
 
+    /*mesh.vertex_attributes = reinterpret_cast<const float*>(unindexed_vertices.data());
+    mesh.vertex_attributes_stride = sizeof(Vertex);
+    mesh.attribute_weights = weights;
+    mesh.attribute_count = 13;*/
     mesh.vertex_attributes = nullptr;
     mesh.vertex_attributes_stride = 0;
     mesh.attribute_weights = nullptr;
