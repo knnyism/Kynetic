@@ -133,7 +133,12 @@
 
 #undef None
 
+#if defined(DEBUG)
 constexpr bool USE_VALIDATION_LAYERS = true;
+#else
+constexpr bool USE_VALIDATION_LAYERS = false;
+#endif
+
 constexpr uint8_t MAX_FRAMES_IN_FLIGHT = 4;
 constexpr uint8_t MAX_DEPTH_PYRAMID_LEVELS = 10;
 

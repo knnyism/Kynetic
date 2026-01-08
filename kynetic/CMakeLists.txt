@@ -264,6 +264,7 @@ add_library(kynetic STATIC
         src/pch.cpp
         src/pch.hpp
         src/clusterlod.h
+        src/imgui_utils.hpp
 )
 
 target_link_libraries(kynetic PUBLIC
