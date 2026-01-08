@@ -17,6 +17,7 @@ KX_DISABLE_WARNING_OUTSIDE_RANGE
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
+#include "imgui_utils.hpp"
 KX_DISABLE_WARNING_POP
 
 using namespace kynetic;
@@ -186,6 +187,8 @@ Device::Device()
     init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
     ImGui_ImplVulkan_Init(&init_info);
+
+    ImGui::SetupTheme();
 
     createGlobalSession(m_slang_session.writeRef());
 }

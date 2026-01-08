@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "rendering/descriptor.hpp"
+
 namespace kynetic
 {
 class Renderer
@@ -54,6 +56,8 @@ class Renderer
 public:
     Renderer();
     ~Renderer();
+
+    void render_imgui();
 
     Renderer(const Renderer&) = delete;
     Renderer(Renderer&&) = delete;

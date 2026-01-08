@@ -7,7 +7,6 @@
 #include "scene.hpp"
 #include "resource_manager.hpp"
 
-#include "rendering/descriptor.hpp"
 #include "rendering/pipeline.hpp"
 #include "rendering/shader.hpp"
 #include "rendering/texture.hpp"
@@ -276,73 +275,77 @@ void Renderer::render_frustum_lines()
 
 void Renderer::render_debug_visualizations() { render_frustum_lines(); }
 
+void Renderer::render_imgui()
+{
+    Scene& scene = Engine::get().scene();
+    auto& debug_settings = scene.get_debug_settings();
+
+    ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
+    // combo_enum(m_render_channel);
+    combo_enum(m_rendering_method);
+    combo_enum(m_meshlet_render_mode);
+
+    ImGui::Separator();
+    ImGui::Text("LOD Settings");
+    ImGui::SliderFloat("Error Threshold (px)", &debug_settings.lod_error_threshold, 0.1f, 10.0f, "%.1f");
+    ImGui::SliderInt("Force LOD",
+                     reinterpret_cast<int*>(&debug_settings.force_lod),
+                     0,
+                     8,
+                     debug_settings.force_lod == 0 ? "Auto" : "%d");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("0 = Automatic LOD selection, 1+ = Force specific LOD level");
+
+    ImGui::Separator();
+    ImGui::Text("Meshlet Debug");
+
+    bool was_paused = debug_settings.pause_culling;
+    if (ImGui::Checkbox("Pause Culling", &debug_settings.pause_culling))
+    {
+        if (debug_settings.pause_culling && !was_paused)
+            scene.freeze_culling_camera();
+        else if (!debug_settings.pause_culling && was_paused)
+            scene.unfreeze_culling_camera();
+    }
+
+    ImGui::Checkbox("Show Frustum", &debug_settings.show_frustum);
+    ImGui::Checkbox("Show Meshlet Spheres", &debug_settings.show_meshlet_spheres);
+    ImGui::Checkbox("Show Meshlet Cones", &debug_settings.show_meshlet_cones);
+
+    ImGui::Separator();
+    ImGui::Text("Meshlet Statistics");
+    ImGui::Text("Total Meshlets: %u", debug_settings.total_meshlets);
+    ImGui::Text("Visible Meshlets: %u", debug_settings.visible_meshlets);
+    if (debug_settings.total_meshlets > 0)
+    {
+        float cull_ratio =
+            1.0f - (static_cast<float>(debug_settings.visible_meshlets) / static_cast<float>(debug_settings.total_meshlets));
+        ImGui::Text("Cull Ratio: %.1f%%", cull_ratio * 100.0f);
+    }
+}
+
 void Renderer::render()
 {
     Device& device = Engine::get().device();
     ResourceManager& resources = Engine::get().resources();
     Scene& scene = Engine::get().scene();
+    auto& debug_settings = scene.get_debug_settings();
 
     auto& ctx = device.get_context();
     const auto& video_out = device.get_video_out();
     const VkExtent2D device_extent = device.get_extent();
 
-    auto& debug_settings = scene.get_debug_settings();
-
-    if (ImGui::Begin("Render Debug"))
-    {
-        ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
-        combo_enum(m_render_channel);
-        combo_enum(m_rendering_method);
-        combo_enum(m_meshlet_render_mode);
-
-        ImGui::Separator();
-        ImGui::Text("LOD Settings");
-        ImGui::SliderFloat("Error Threshold (px)", &debug_settings.lod_error_threshold, 0.1f, 10.0f, "%.1f");
-        ImGui::SliderInt("Force LOD",
-                         reinterpret_cast<int*>(&debug_settings.force_lod),
-                         0,
-                         8,
-                         debug_settings.force_lod == 0 ? "Auto" : "%d");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("0 = Automatic LOD selection, 1+ = Force specific LOD level");
-
-        ImGui::Separator();
-        ImGui::Text("Meshlet Debug");
-
-        bool was_paused = debug_settings.pause_culling;
-        if (ImGui::Checkbox("Pause Culling", &debug_settings.pause_culling))
-        {
-            if (debug_settings.pause_culling && !was_paused)
-                scene.freeze_culling_camera();
-            else if (!debug_settings.pause_culling && was_paused)
-                scene.unfreeze_culling_camera();
-        }
-
-        ImGui::Checkbox("Show Frustum", &debug_settings.show_frustum);
-        ImGui::Checkbox("Show Meshlet Spheres", &debug_settings.show_meshlet_spheres);
-        ImGui::Checkbox("Show Meshlet Cones", &debug_settings.show_meshlet_cones);
-
-        ImGui::Separator();
-        ImGui::Text("Meshlet Statistics");
-        ImGui::Text("Total Meshlets: %u", debug_settings.total_meshlets);
-        ImGui::Text("Visible Meshlets: %u", debug_settings.visible_meshlets);
-        if (debug_settings.total_meshlets > 0)
-        {
-            float cull_ratio = 1.0f - (static_cast<float>(debug_settings.visible_meshlets) /
-                                       static_cast<float>(debug_settings.total_meshlets));
-            ImGui::Text("Cull Ratio: %.1f%%", cull_ratio * 100.0f);
-        }
-    }
-    ImGui::End();
-
     if (device_extent.width != m_last_device_extent.width || device_extent.height != m_last_device_extent.height)
     {
         m_last_device_extent = device_extent;
+        m_last_render_scale = m_render_scale;
 
         destroy_depth_pyramid();
         destroy_render_target();
 
         init_render_target();
         init_depth_pyramid();
+
+        ctx.dcb.transition_image(m_depth_pyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
     }
 
     if (m_last_render_scale != m_render_scale)
@@ -351,6 +354,8 @@ void Renderer::render()
 
         destroy_depth_pyramid();
         init_depth_pyramid();
+
+        ctx.dcb.transition_image(m_depth_pyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
     }
 
     ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
@@ -365,6 +370,7 @@ void Renderer::render()
                                VK_NULL_HANDLE,
                                VK_IMAGE_LAYOUT_GENERAL,
                                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+            writer.write_buffer(1, scene.get_scene_buffer().buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
             writer.update_set(device.get(), image_descriptor);
         }
         ctx.dcb.bind_descriptors(image_descriptor);

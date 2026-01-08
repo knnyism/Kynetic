@@ -34,6 +34,7 @@ public:
     [[nodiscard]] Input& input() const { return *m_input; }
     [[nodiscard]] ResourceManager& resources() const { return *m_resource_manager; }
     [[nodiscard]] Scene& scene() const { return *m_scene; }
+    [[nodiscard]] Renderer& renderer() const { return *m_renderer; }
 
     void init();
     void shutdown();

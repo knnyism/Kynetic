@@ -300,8 +300,8 @@ void Scene::update()
         .debug_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : vp,
 
         .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
-        .sun_direction = glm::vec4(glm::normalize(glm::vec3(0.f, -1.f, -1.f)), 0.f),
-        .sun_color = glm::vec4(0.5f, 0.5f, 0.5f, 0.f) * 2.5f,
+        .sun_direction = glm::vec4(glm::normalize(glm::vec3(-1.f, -1.f, -1.f)), 0.f),
+        .sun_color = glm::vec4(1.0f, 1.0f, 1.0f, 0.f),
 
         .use_debug_culling = m_debug_settings.pause_culling ? 1u : 0u,
 
