@@ -241,12 +241,57 @@ struct Fragment
     float4 color;
 };
 
+static const float3 SH_L00  = float3(0.68, 0.67, 0.64);
+static const float3 SH_L1_1 = float3(0.0, 0.0, 0.0);
+static const float3 SH_L10  = float3(0.28, 0.27, 0.24);
+static const float3 SH_L11  = float3(0.0, 0.0, 0.0);
+static const float3 SH_L2_2 = float3(0.0, 0.0, 0.0);
+static const float3 SH_L2_1 = float3(0.0, 0.0, 0.0);
+static const float3 SH_L20  = float3(0.04, 0.04, 0.03);
+static const float3 SH_L21  = float3(0.0, 0.0, 0.0);
+static const float3 SH_L22  = float3(0.0, 0.0, 0.0);
+
+float3 evaluate_sh_irradiance_fast(float3 n)
+{
+    const float A0 = 3.141593; // pi
+    const float A1 = 2.094395; // 2*pi/3
+    const float A2 = 0.785398; // pi/4
+
+    float3 result = float3(0.0);
+
+    result += SH_L00 * A0 * 0.282095;
+
+    result += SH_L1_1 * A1 * 0.488603 * n.y;
+    result += SH_L10  * A1 * 0.488603 * n.z;
+    result += SH_L11  * A1 * 0.488603 * n.x;
+
+    result += SH_L2_2 * A2 * 1.092548 * (n.x * n.y);
+    result += SH_L2_1 * A2 * 1.092548 * (n.y * n.z);
+    result += SH_L20  * A2 * 0.315392 * (3.0 * n.z * n.z - 1.0);
+    result += SH_L21  * A2 * 1.092548 * (n.x * n.z);
+    result += SH_L22  * A2 * 0.546274 * (n.x * n.x - n.y * n.y);
+
+    return max(result, float3(0.0));
+}
+
 [shader("fragment")]
 Fragment fragment_main(CoarseVertex coarse_vertex, float4 position : SV_Position) : SV_Target
 {
-    float n_dot_l = saturate(dot(coarse_vertex.normal, -scene.sun_direction.xyz));
+    float3 N = normalize(coarse_vertex.normal);
+    float3 L = -normalize(scene.sun_direction.xyz);
+    float3 V = normalize(scene.view_inv[3].xyz - coarse_vertex.world_position);
 
-    Fragment output;
-    output.color = float4(coarse_vertex.color * n_dot_l * scene.sun_color.xyz, 1.0);
+    float3 albedo = coarse_vertex.color;
+
+    float n_dot_l = saturate(dot(N, L));
+    float3 direct = albedo * n_dot_l * scene.sun_color.xyz;
+
+    float3 sh_irradiance = evaluate_sh_irradiance_fast(N);
+    float3 indirect = albedo * sh_irradiance * (1.0 / 3.14159265) * 2.f;
+
+    float3 final_color = direct + indirect;
+
+    Fragment output; 
+    output.color = float4(final_color, 1.0);
     return output;
 }
