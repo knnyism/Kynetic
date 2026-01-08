@@ -5,20 +5,27 @@ static constexpr float EPSILON = 1e-6f;
 static constexpr float GOLDEN_RATIO = 0.618033988749895f;
 
 // LOD level color palette for debugging
-static const float3 LOD_COLORS[8] = {
-    float3(0.0, 1.0, 0.0),   // LOD 0 - Green (original)
-    float3(0.0, 0.8, 0.4),   // LOD 1
-    float3(0.0, 0.6, 0.8),   // LOD 2
-    float3(0.0, 0.4, 1.0),   // LOD 3
-    float3(0.4, 0.2, 1.0),   // LOD 4
-    float3(0.8, 0.0, 1.0),   // LOD 5
-    float3(1.0, 0.0, 0.6),   // LOD 6
-    float3(1.0, 0.0, 0.0),   // LOD 7+ - Red (coarsest)
+static const float3 LOD_COLORS[16] = {
+    float3(0.0f, 1.0f, 0.0f),  // LOD 0  - Green (original/finest)
+    float3(0.0f, 1.0f, 0.25f), // LOD 1
+    float3(0.0f, 0.9f, 0.5f),  // LOD 2
+    float3(0.0f, 0.8f, 0.6f),  // LOD 3
+    float3(0.0f, 0.7f, 0.8f),  // LOD 4
+    float3(0.0f, 0.5f, 1.0f),  // LOD 5
+    float3(0.0f, 0.3f, 1.0f),  // LOD 6
+    float3(0.2f, 0.2f, 1.0f),  // LOD 7
+    float3(0.4f, 0.1f, 1.0f),  // LOD 8
+    float3(0.6f, 0.0f, 1.0f),  // LOD 9
+    float3(0.8f, 0.0f, 0.9f),  // LOD 10
+    float3(0.9f, 0.0f, 0.7f),  // LOD 11
+    float3(1.0f, 0.0f, 0.5f),  // LOD 12
+    float3(1.0f, 0.0f, 0.3f),  // LOD 13
+    float3(1.0f, 0.1f, 0.1f),  // LOD 14
+    float3(1.0f, 0.0f, 0.0f),  // LOD 15 - Red (coarsest)
 };
-
 float3 get_lod_color(uint lod_level)
 {
-    uint idx = min(lod_level, 7);
+    uint idx = min(lod_level, 15);
     return LOD_COLORS[idx];
 }
 

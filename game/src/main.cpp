@@ -25,8 +25,8 @@ class Viewer
     bool m_is_mouse_locked{true};
 
     // Source-style movement parameters
-    float m_max_velocity{20.f};
-    float m_accelerate{20.f};
+    float m_max_velocity{10.f};
+    float m_accelerate{100.f};
     float m_friction{10.f};
 
     int m_grid_size{5};
@@ -164,7 +164,7 @@ public:
     {
         ImGui::DockSpaceOverViewport(0, 0, ImGuiDockNodeFlags_PassthruCentralNode);
 
-        ImGui::Begin("Instances");
+        ImGui::Begin("Viewer");
         {
             kynetic::Engine::get().renderer().render_imgui();
 
@@ -176,9 +176,9 @@ public:
 
             ImGui::Separator();
             ImGui::Text("Movement Settings");
-            ImGui::SliderFloat("Max Velocity", &m_max_velocity, 1.f, 50.f);
-            ImGui::SliderFloat("Accelerate", &m_accelerate, 1.f, 50.f);
-            ImGui::SliderFloat("Friction", &m_friction, 0.f, 20.f);
+            ImGui::SliderFloat("Max Velocity", &m_max_velocity, 1.f, 10.f);
+            ImGui::SliderFloat("Accelerate", &m_accelerate, 1.f, 100.f);
+            ImGui::SliderFloat("Friction", &m_friction, 0.f, 10.f);
             ImGui::Text("Speed: %.2f", glm::length(m_camera_velocity));
         }
         ImGui::End();
