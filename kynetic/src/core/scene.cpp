@@ -17,20 +17,22 @@
 
 using namespace kynetic;
 
-bool is_visible(glm::mat4 mat, glm::vec3 origin, float radius)
+static void get_frustum_planes(glm::mat4x4& view_projection, glm::vec4* out)
 {
-    std::array<glm::vec4, 6> planes{};
-    for (uint8_t i = 0; i < 3; ++i)
+    for (auto i = 0; i < 3; ++i)
     {
         for (size_t j = 0; j < 2; ++j)
         {
             const float sign = j ? 1.f : -1.f;
-            for (auto k = 0; k < 4; ++k) planes[2 * i + j][k] = mat[k][3] + sign * mat[k][i];
+            for (auto k = 0; k < 4; ++k) out[2 * i + j][k] = view_projection[k][3] + sign * view_projection[k][i];
         }
     }
 
-    for (auto&& plane : planes) plane /= glm::length(glm::vec3(plane));
+    for (int plane = 0; plane < 6; ++plane) out[plane] /= glm::length(glm::vec3(out[plane]));
+}
 
+static bool is_visible(glm::vec4* planes, glm::vec3 origin, float radius)
+{
     std::array<int, 4> V{0, 1, 4, 5};
     return std::ranges::all_of(V,
                                [planes, origin, radius](size_t i)
@@ -70,8 +72,10 @@ Scene::Scene()
 
 Scene::~Scene() = default;
 
-void Scene::cpu_cull(const glm::mat4& vp)
+void Scene::cpu_cull()
 {
+    auto& planes = m_debug_settings.pause_culling ? m_scene_data.debug_frustum : m_scene_data.frustum;
+
     for (VkDrawIndexedIndirectCommand& draw_command : m_draws)
     {
         uint32_t write_index = draw_command.firstInstance;
@@ -82,7 +86,7 @@ void Scene::cpu_cull(const glm::mat4& vp)
         {
             InstanceData& read_instance = m_instances[read_index];
 
-            if (is_visible(vp, read_instance.position, read_instance.position.w))
+            if (is_visible(planes, read_instance.position, read_instance.position.w))
             {
                 if (write_index != read_index) m_instances[write_index] = m_instances[read_index];
                 write_index++;
@@ -118,6 +122,11 @@ void Scene::gpu_cull() const
 
     const uint32_t dispatch_x = draw_count > 0 ? 1 + (draw_count - 1) / 64 : 1;
     ctx.dcb.dispatch(dispatch_x, 1, 1);
+
+    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                             VK_ACCESS_2_SHADER_WRITE_BIT,
+                             VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                             VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
 }
 
 void Scene::freeze_culling_camera()
@@ -289,15 +298,15 @@ void Scene::update()
     m_scene_data = SceneData{
         .view = m_view,
         .view_inv = glm::inverse(glm::transpose(m_view)),
+
         .proj = m_projection,
         .vp = vp,
         .previous_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_previous_vp : m_previous_vp,
 
-        .debug_view = m_debug_settings.pause_culling ? m_debug_settings.frozen_view : m_view,
-        .debug_view_inv = m_debug_settings.pause_culling ? glm::inverse(glm::transpose(m_debug_settings.frozen_view))
-                                                         : glm::inverse(glm::transpose(m_view)),
-        .debug_proj = m_debug_settings.pause_culling ? m_debug_settings.frozen_projection : m_projection,
-        .debug_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : vp,
+        .debug_view = m_debug_settings.frozen_view,
+        .debug_view_inv = glm::inverse(glm::transpose(m_debug_settings.frozen_view)),
+        .debug_proj = m_debug_settings.frozen_projection,
+        .debug_vp = m_debug_settings.frozen_vp,
 
         .ambient_color = glm::vec4(0.1f, 0.1f, 0.1f, 0.f),
         .sun_direction = glm::vec4(glm::normalize(glm::vec3(-1.f, -1.f, -1.f)), 0.f),
@@ -310,10 +319,10 @@ void Scene::update()
         .projection_11 = m_projection[1][1],
     };
 
-    if (!m_debug_settings.pause_culling)
-    {
-        m_previous_vp = vp;
-    }
+    get_frustum_planes(vp, m_scene_data.frustum);
+    get_frustum_planes(m_debug_settings.frozen_vp, m_scene_data.debug_frustum);
+
+    if (!m_debug_settings.pause_culling) m_previous_vp = vp;
 
     update_buffers();
 }
@@ -519,8 +528,7 @@ void Scene::cull(RenderMode render_mode)
     {
         case RenderMode::CpuDriven:
         {
-            glm::mat4 cull_vp = m_debug_settings.pause_culling ? m_debug_settings.frozen_vp : m_scene_data.vp;
-            cpu_cull(cull_vp);
+            cpu_cull();
             update_buffers();
         }
         break;

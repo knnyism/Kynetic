@@ -76,29 +76,12 @@ float smith_ggx_correlated(float n_dot_v, float n_dot_l, float roughness)
 
 float lambertian() { return 1.0 / PI; }
 
-bool is_visible(float4x4 mat, float3 origin, float radius)
+bool is_visible(float4[6] planes, float3 origin, float radius)
 {
-    uint plane_index = 0;
-    for (uint i = 0; i < 3; ++i)
+    for (uint i = 0; i < 6; ++i)
     {
-        for (uint j = 0; j < 2; ++j, ++plane_index)
-        {
-            if (plane_index == 2 || plane_index == 3)
-            {
-                continue;
-            }
-            const float sign = (j > 0) ? 1.f : -1.f;
-            float4 plane = 0.f;
-            for (uint k = 0; k < 4; ++k)
-            {
-                plane[k] = mat[3][k] + sign * mat[i][k];
-            }
-            plane.xyzw /= sqrt(dot(plane.xyz, plane.xyz));
-            if (dot(origin, plane.xyz) + plane.w + radius < 0)
-            {
-                return false;
-            }
-        }
+        if (i == 2 || i == 3) continue;
+        if (dot(origin, planes[i].xyz) + planes[i].w + radius < 0) return false;
     }
     return true;
 }

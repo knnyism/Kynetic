@@ -69,11 +69,12 @@ class Scene
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
     glm::mat4 m_previous_vp = glm::mat4(1.0f);
+
     float m_camera_fovy{70.0f};
 
     DebugSettings m_debug_settings;
 
-    void cpu_cull(const glm::mat4& vp);
+    void cpu_cull();
     void gpu_cull() const;
 
     void update();

@@ -178,6 +178,30 @@ void CommandBuffer::pipeline_barrier(VkPipelineStageFlags src_stage_mask,
                          pImageMemoryBarriers);
 }
 
+void CommandBuffer::pipeline_barrier(VkPipelineStageFlags2 src_stage_mask,
+                                     VkAccessFlags2 src_access_mask,
+                                     VkPipelineStageFlags2 dst_stage_mask,
+                                     VkAccessFlags2 dst_access_mask)
+{
+    VkMemoryBarrier2 barrier{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .pNext = nullptr,
+        .srcStageMask = src_stage_mask,
+        .srcAccessMask = src_access_mask,
+        .dstStageMask = dst_stage_mask,
+        .dstAccessMask = dst_access_mask,
+    };
+
+    VkDependencyInfo dependency_info{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = nullptr,
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &barrier,
+    };
+
+    vkCmdPipelineBarrier2(m_command_buffer, &dependency_info);
+}
+
 void CommandBuffer::bind_descriptors(VkDescriptorSet descriptor_set, uint32_t first_set, uint32_t count) const
 {
     vkCmdBindDescriptorSets(m_command_buffer,

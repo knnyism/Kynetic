@@ -97,15 +97,20 @@ struct SceneData
 {
     column_major float4x4 view;
     column_major float4x4 view_inv;
-    column_major float4x4 proj;
-    column_major float4x4 vp;
 
+    column_major float4x4 proj;
+
+    column_major float4x4 vp;
     column_major float4x4 previous_vp;
+
+    float4 frustum[6];
 
     column_major float4x4 debug_view;
     column_major float4x4 debug_view_inv;
     column_major float4x4 debug_proj;
     column_major float4x4 debug_vp;
+
+    float4 debug_frustum[6];
 
     float4 ambient_color;
     float4 sun_direction;

@@ -21,6 +21,8 @@ void main(uint3 global_id : SV_DispatchThreadID)
     uint id = global_id.x;
 
     if (id >= constants.draw_count) return;
+    
+    float4[6] cull_frustum = scene.use_debug_culling > 0 ? scene.debug_frustum : scene.frustum;
 
     VkDrawIndexedIndirectCommand* draw_commands = (VkDrawIndexedIndirectCommand*)constants.draw_commands;
 
@@ -33,7 +35,7 @@ void main(uint3 global_id : SV_DispatchThreadID)
     {
         InstanceData read_instance = instances[read_index];
 
-        if (is_visible(scene.vp, read_instance.position.xyz, read_instance.position.w)) {
+        if (is_visible(cull_frustum, read_instance.position.xyz, read_instance.position.w)) {
             if (write_index != read_index) instances[write_index] = read_instance;
             write_index++;
         }

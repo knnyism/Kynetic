@@ -56,6 +56,10 @@ public:
                           const VkBufferMemoryBarrier* pBufferMemoryBarriers,
                           uint32_t image_memory_barrier_count,
                           const VkImageMemoryBarrier* pImageMemoryBarriers) const;
+    void pipeline_barrier(VkPipelineStageFlags2 src_stage_mask,
+                          VkAccessFlags2 src_access_mask,
+                          VkPipelineStageFlags2 dst_stage_mask,
+                          VkAccessFlags2 dst_access_mask);
 
     void dispatch(uint32_t x, uint32_t y, uint32_t z) const;
 

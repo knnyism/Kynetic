@@ -81,7 +81,7 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
     bool accept = false;
 
-    float4x4 cull_vp = scene.use_debug_culling > 0 ? scene.debug_vp : scene.vp;
+    float4[6] cull_frustum = scene.use_debug_culling > 0 ? scene.debug_frustum : scene.frustum;
     float3 cull_camera_pos = scene.use_debug_culling > 0 ? scene.debug_view_inv[3].xyz : scene.view_inv[3].xyz;
 
     if (meshlet_index < draw.meshlet_count)
@@ -109,7 +109,7 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
             float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
 
             accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
-            accept = accept && is_visible(cull_vp, center.xyz, radius);
+            accept = accept && is_visible(cull_frustum, center.xyz, radius);
 
             float4 aabb;
             if (accept)
