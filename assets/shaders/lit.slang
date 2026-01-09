@@ -38,7 +38,7 @@ VertexStageOutput vertex_main(uint vertex_id : SV_VulkanVertexID, uint instance_
     float4x4 mvp = mul(scene.vp, instance.model);
     float3x3 model_inv = float3x3(instance.model_inv);
 
-    output.coarse_vertex.color = v.color.xyz;
+    output.coarse_vertex.color = get_pastel_color(instance_id);
     output.coarse_vertex.uv = float2(v.uv_x, v.uv_y);
 
     output.coarse_vertex.tangent = normalize(mul(model_inv, v.tangent.xyz));
@@ -127,7 +127,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
     float3 L = -normalize(scene.sun_direction.xyz);
     float3 V = normalize(scene.view_inv[3].xyz - coarse_vertex.world_position);
     
-    float3 albedo = get_pastel_color(coarse_vertex.material_index);
+    float3 albedo = coarse_vertex.color;
     float3 light_color = scene.sun_color.xyz;
     
     float roughness = 0.5;
@@ -135,7 +135,7 @@ Fragment fragment_main(CoarseVertex coarse_vertex : CoarseVertex) : SV_Target
     float3 direct = albedo * diffuse * light_color;
     
     float3 sh_irradiance = evaluate_sh_irradiance_fast(N);
-    float3 indirect = albedo * sh_irradiance * (1.0 / 3.14159265) * 2.0;
+    float3 indirect = albedo * sh_irradiance * (1.0 / 3.14159265) * 2.f;
     
     float3 final_color = direct + indirect;
     
