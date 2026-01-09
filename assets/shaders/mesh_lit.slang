@@ -274,24 +274,54 @@ float3 evaluate_sh_irradiance_fast(float3 n)
     return max(result, float3(0.0));
 }
 
-[shader("fragment")]
-Fragment fragment_main(CoarseVertex coarse_vertex, float4 position : SV_Position) : SV_Target
+float oren_nayar(float3 N, float3 L, float3 V, float roughness)
 {
+    float sigma2 = roughness * roughness;
+
+    float n_dot_l = saturate(dot(N, L));
+    float n_dot_v = saturate(dot(N, V));
+
+    if (n_dot_l < 1e-6 || n_dot_v < 1e-6)
+        return n_dot_l;
+
+    float A = 1.0 - 0.5 * (sigma2 / (sigma2 + 0.33));
+    float B = 0.45 * (sigma2 / (sigma2 + 0.09));
+
+    float theta_i = acos(n_dot_l);
+    float theta_r = acos(n_dot_v);
+
+    float alpha = max(theta_i, theta_r);
+    float beta = min(theta_i, theta_r);
+
+    float3 L_proj = normalize(L - N * n_dot_l);
+    float3 V_proj = normalize(V - N * n_dot_v);
+
+    float cos_phi_diff = max(0.0, dot(L_proj, V_proj));
+
+    return n_dot_l * (A + B * cos_phi_diff * sin(alpha) * tan(beta));
+}
+
+[shader("fragment")]
+Fragment fragment_main(CoarseVertex coarse_vertex, float4 position: SV_Position) : SV_Target
+{
+    Fragment output;
+
     float3 N = normalize(coarse_vertex.normal);
     float3 L = -normalize(scene.sun_direction.xyz);
     float3 V = normalize(scene.view_inv[3].xyz - coarse_vertex.world_position);
 
     float3 albedo = coarse_vertex.color;
+    float3 light_color = scene.sun_color.xyz;
 
-    float n_dot_l = saturate(dot(N, L));
-    float3 direct = albedo * n_dot_l * scene.sun_color.xyz;
+    float roughness = 0.5;
+    float diffuse = oren_nayar(N, L, V, roughness);
+    float3 direct = albedo * diffuse * light_color;
 
     float3 sh_irradiance = evaluate_sh_irradiance_fast(N);
     float3 indirect = albedo * sh_irradiance * (1.0 / 3.14159265) * 2.f;
 
     float3 final_color = direct + indirect;
 
-    Fragment output; 
     output.color = float4(final_color, 1.0);
     return output;
 }
