@@ -128,13 +128,14 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
                     float level = floor(log2(max(aabb_width, aabb_height)));
 
-                    float2 uv = (aabb.xy + aabb.zw) * 0.5;
+                    float2 uv = (aabb.xy + aabb.zw);
+                    // uv.y = 1.0 - uv.y; // Umm idk commenting this line out got it to work......
 
                     float depth = depth_pyramid_texture.SampleLevel(uv, level);
-                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.y), level));
-                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.w), level));
-                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, 1.0f - aabb.w), level));
-                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, 1.0f - aabb.y), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, aabb.y), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, aabb.w), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.x, aabb.w), level));
+                    depth = min(depth, depth_pyramid_texture.SampleLevel(float2(aabb.z, aabb.y), level));
 
                     float3 dir = normalize(cull_camera_pos - center.xyz);
                     float4 sphere_clip = mul(scene.previous_vp, float4(center.xyz + dir * radius, 1.0));
