@@ -263,3 +263,18 @@ void CommandBuffer::multi_draw_mesh_tasks_indirect(VkBuffer buffer,
 {
     vkCmdDrawMeshTasksIndirectEXT(m_command_buffer, buffer, offset, draw_count, stride);
 }
+
+void CommandBuffer::reset_query_pool(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count) const
+{
+    vkCmdResetQueryPool(m_command_buffer, query_pool, first_query, query_count);
+}
+
+void CommandBuffer::begin_query(VkQueryPool query_pool, uint32_t query, VkQueryControlFlags flags) const
+{
+    vkCmdBeginQuery(m_command_buffer, query_pool, query, flags);
+}
+
+void CommandBuffer::end_query(VkQueryPool query_pool, uint32_t query) const
+{
+    vkCmdEndQuery(m_command_buffer, query_pool, query);
+}

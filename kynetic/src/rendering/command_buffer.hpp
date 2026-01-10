@@ -10,6 +10,7 @@ namespace kynetic
 class CommandBuffer
 {
     friend class Device;
+    friend class Renderer;
 
     VkDevice m_device{VK_NULL_HANDLE};
     VkCommandPool m_command_pool{VK_NULL_HANDLE};
@@ -72,6 +73,12 @@ public:
     void multi_draw_indirect(VkBuffer buffer, uint32_t draw_count, uint32_t stride, VkDeviceSize offset = 0) const;
     void draw_mesh_tasks(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z) const;
     void multi_draw_mesh_tasks_indirect(VkBuffer buffer, uint32_t draw_count, uint32_t stride, VkDeviceSize offset = 0) const;
+
+    void reset_query_pool(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count) const;
+    void begin_query(VkQueryPool query_pool, uint32_t query, VkQueryControlFlags flags = 0) const;
+    void end_query(VkQueryPool query_pool, uint32_t query) const;
+
+    [[nodiscard]] VkCommandBuffer get_handle() const { return m_command_buffer; }
 };
 
 }  // namespace kynetic

@@ -63,7 +63,7 @@ public:
         kynetic::ResourceManager& resources = kynetic::Engine::get().resources();
 
         m_camera = scene.add_camera(true);
-        m_bunny_model = resources.load<kynetic::Model>("assets/models/bunny.glb");
+        m_bunny_model = resources.load<kynetic::Model>("assets/models/cube.glb");
 
         rebuild_grid();
 
@@ -168,18 +168,9 @@ public:
         {
             kynetic::Engine::get().renderer().render_imgui();
 
-            int total_instances = m_grid_size * m_grid_size;
-            ImGui::Text("Total instances: %d", total_instances);
             if (ImGui::SliderInt("Grid Size", &m_grid_size, 1, 20)) m_needs_rebuild = true;
             if (ImGui::SliderFloat("Spacing", &m_spacing, 0.5f, 5.0f)) m_needs_rebuild = true;
             if (ImGui::Button("Regenerate")) m_needs_rebuild = true;
-
-            ImGui::Separator();
-            ImGui::Text("Movement Settings");
-            ImGui::SliderFloat("Max Velocity", &m_max_velocity, 1.f, 10.f);
-            ImGui::SliderFloat("Accelerate", &m_accelerate, 1.f, 100.f);
-            ImGui::SliderFloat("Friction", &m_friction, 0.f, 10.f);
-            ImGui::Text("Speed: %.2f", glm::length(m_camera_velocity));
         }
         ImGui::End();
     }

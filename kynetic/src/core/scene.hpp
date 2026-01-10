@@ -18,6 +18,10 @@ struct DebugSettings
     bool show_meshlet_spheres{false};
     bool show_meshlet_cones{false};
 
+    bool enable_frustum_culling{true};
+    bool enable_backface_culling{true};
+    bool enable_occlusion_culling{true};
+
     glm::mat4 frozen_view{1.f};
     glm::mat4 frozen_projection{1.f};
     glm::mat4 frozen_vp{1.f};
@@ -27,8 +31,13 @@ struct DebugSettings
     uint32_t total_meshlets{0};
     uint32_t visible_meshlets{0};
 
+    uint32_t total_triangles{0};
+    uint32_t visible_triangles{0};
+
     float lod_error_threshold{1.0f};
     uint32_t force_lod{0};  // 0 = auto, 1+ = force specific level
+
+    RenderMode render_mode{RenderMode::CpuDriven};
 };
 
 class Scene
@@ -43,9 +52,13 @@ class Scene
     flecs::query<TransformComponent, TransformComponent> m_transform_hierarchy_query;
     flecs::query<CameraComponent, TransformComponent, MainCameraTag> m_camera_query;
     flecs::query<TransformComponent, MeshComponent> m_mesh_query;
+    flecs::query<TransformComponent, MeshComponent> m_mesh_query_unordered;
 
     std::shared_ptr<class Shader> m_cull_shader;
     std::unique_ptr<class Pipeline> m_cull_pipeline;
+
+    std::shared_ptr<Shader> m_mesh_cull_shader;
+    std::unique_ptr<Pipeline> m_mesh_cull_pipeline;
 
     std::vector<InstanceData> m_instances;
     AllocatedBuffer m_instances_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
@@ -61,10 +74,14 @@ class Scene
 
     std::vector<VkDrawMeshTasksIndirectCommandEXT> m_mesh_indirect_commands;
     AllocatedBuffer m_mesh_indirect_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_mesh_indirect_buffer_address;
 
     SceneData m_scene_data;
     AllocatedBuffer m_scene_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
     VkDeviceAddress m_scene_buffer_address{0};
+
+    AllocatedBuffer m_instances_output_buffers[MAX_FRAMES_IN_FLIGHT]{VK_NULL_HANDLE};
+    VkDeviceAddress m_instances_output_buffer_address{0};
 
     glm::mat4 m_projection{1.f};
     glm::mat4 m_view{1.f};
@@ -75,6 +92,7 @@ class Scene
     DebugSettings m_debug_settings;
 
     void gpu_cull() const;
+    void gpu_cull_mesh() const;
 
     void update();
     void update_buffers();
@@ -96,12 +114,15 @@ public:
     [[nodiscard]] uint32_t get_draw_count() const { return static_cast<uint32_t>(m_draws.size()); }
 
     [[nodiscard]] uint32_t get_mesh_draw_count() const { return static_cast<uint32_t>(m_mesh_draw_data.size()); }
+    [[nodiscard]] uint32_t get_instance_count() const { return static_cast<uint32_t>(m_instances.size()); }
 
     [[nodiscard]] VkDeviceAddress get_instance_buffer_address() const { return m_instances_buffer_address; }
+    [[nodiscard]] VkDeviceAddress get_instance_output_buffer_address() const { return m_instances_output_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_scene_buffer_address() const { return m_scene_buffer_address; }
     [[nodiscard]] VkDeviceAddress get_mesh_draw_data_buffer_address() const { return m_mesh_draw_data_buffer_address; }
 
     [[nodiscard]] AllocatedBuffer get_instance_buffer() const;
+    [[nodiscard]] AllocatedBuffer get_instance_output_buffer() const;
     [[nodiscard]] AllocatedBuffer get_draw_buffer() const;
     [[nodiscard]] AllocatedBuffer get_scene_buffer() const;
     [[nodiscard]] AllocatedBuffer get_mesh_indirect_buffer() const;
@@ -115,7 +136,7 @@ public:
     std::vector<glm::vec3> get_frustum_corners(const glm::mat4& vp) const;
     std::vector<DebugLineVertex> get_frustum_lines() const;
 
-    void cull(RenderMode render_mode);
-    void draw(RenderMode render_mode) const;
+    void cull() const;
+    void draw() const;
 };
 }  // namespace kynetic

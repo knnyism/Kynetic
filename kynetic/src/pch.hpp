@@ -200,8 +200,7 @@ enum class RenderMode
 {
     CpuDriven,
     GpuDriven,
-
-    GpuDrivenMeshlets
+    Meshlets
 };
 
 struct Resource

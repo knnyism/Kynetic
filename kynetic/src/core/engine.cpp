@@ -60,8 +60,9 @@ void Engine::update()
         }
         else if (m_device->begin_frame())
         {
-            m_scene->update();
             m_render_callback();
+
+            m_scene->update();
             m_renderer->render();
             m_device->end_frame();
         }

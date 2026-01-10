@@ -29,6 +29,7 @@ Renderer::Renderer()
 
     init_render_target();
     init_depth_pyramid();
+    init_query_pools();
 
     m_lit_pipeline =
         std::make_unique<Pipeline>(GraphicsPipelineBuilder()
@@ -75,13 +76,38 @@ Renderer::Renderer()
                                        .build(device));
 
     m_last_device_extent = device.get_extent();
+    m_last_frame_time = std::chrono::high_resolution_clock::now();
 }
 
 Renderer::~Renderer()
 {
+    destroy_query_pools();
     destroy_depth_pyramid();
     destroy_render_target();
     m_deletion_queue.flush();
+}
+
+void Renderer::init_query_pools()
+{
+    Device& device = Engine::get().device();
+
+    VkQueryPoolCreateInfo query_pool_info{};
+    query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    query_pool_info.queryType = VK_QUERY_TYPE_PIPELINE_STATISTICS;
+    query_pool_info.queryCount = QUERY_COUNT;
+    query_pool_info.pipelineStatistics = VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT |
+                                         VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT;
+
+    VK_CHECK(vkCreateQueryPool(device.get(), &query_pool_info, nullptr, &m_pipeline_stats_query_pool));
+
+    for (uint32_t i = 0; i < QUERY_COUNT; ++i) m_query_results_available[i] = false;
+}
+
+void Renderer::destroy_query_pools()
+{
+    Device& device = Engine::get().device();
+
+    if (m_pipeline_stats_query_pool != VK_NULL_HANDLE) vkDestroyQueryPool(device.get(), m_pipeline_stats_query_pool, nullptr);
 }
 
 void Renderer::init_render_target()
@@ -275,15 +301,123 @@ void Renderer::render_frustum_lines()
 
 void Renderer::render_debug_visualizations() { render_frustum_lines(); }
 
+void Renderer::update_frametime_stats(float delta_time_ms)
+{
+    m_perf_stats.frame_time_ms = delta_time_ms;
+    m_perf_stats.fps = delta_time_ms > 0.0f ? 1000.0f / delta_time_ms : 0.0f;
+
+    m_perf_stats.min_frame_time_ms = std::min(m_perf_stats.min_frame_time_ms, delta_time_ms);
+    m_perf_stats.max_frame_time_ms = std::max(m_perf_stats.max_frame_time_ms, delta_time_ms);
+
+    m_perf_stats.frame_time_history[m_perf_stats.frame_time_index] = delta_time_ms;
+    m_perf_stats.frame_time_index = (m_perf_stats.frame_time_index + 1) % PerformanceStats::FRAME_HISTORY_SIZE;
+    m_perf_stats.frame_time_count = std::min(m_perf_stats.frame_time_count + 1, PerformanceStats::FRAME_HISTORY_SIZE);
+
+    float sum = 0.0f;
+    for (size_t i = 0; i < m_perf_stats.frame_time_count; ++i) sum += m_perf_stats.frame_time_history[i];
+
+    m_perf_stats.avg_frame_time_ms = sum / static_cast<float>(m_perf_stats.frame_time_count);
+}
+
+void Renderer::render_performance_overlay()
+{
+    if (!m_show_perf_overlay) return;
+
+    Scene& scene = Engine::get().scene();
+    auto& debug_settings = scene.get_debug_settings();
+
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                    ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+
+    const float padding = 10.0f;
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImVec2 work_pos = viewport->WorkPos;
+    ImVec2 work_size = viewport->WorkSize;
+
+    ImVec2 window_pos(work_pos.x + work_size.x - padding, work_pos.y + work_size.y - padding);
+    ImVec2 window_pivot(1.0f, 1.0f);
+
+    ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pivot);
+    ImGui::SetNextWindowBgAlpha(0.65f);
+
+    if (ImGui::Begin("Performance Stats", &m_show_perf_overlay, window_flags))
+    {
+        ImGui::Text("Performance Statistics");
+        ImGui::Separator();
+
+        ImGui::Text("Frame Time: %.2f ms", m_perf_stats.frame_time_ms);
+        ImGui::Text("FPS: %.1f", m_perf_stats.fps);
+        ImGui::Text("Avg Frame Time: %.2f ms", m_perf_stats.avg_frame_time_ms);
+        ImGui::Text("Min/Max: %.2f / %.2f ms", m_perf_stats.min_frame_time_ms, m_perf_stats.max_frame_time_ms);
+
+        ImGui::PlotLines("##frametime",
+                         m_perf_stats.frame_time_history,
+                         static_cast<int>(m_perf_stats.frame_time_count),
+                         static_cast<int>(m_perf_stats.frame_time_index),
+                         nullptr,
+                         0.0f,
+                         33.3f,
+                         ImVec2(200, 50));
+
+        ImGui::Separator();
+
+        ImGui::Text("Instances: %s", fmt::format("{:L}", scene.get_instance_count()).c_str());
+
+        if (m_perf_stats.total_triangles > 0)
+        {
+            float cull_ratio =
+                1.0f - (static_cast<float>(m_perf_stats.rendered_triangles) / static_cast<float>(m_perf_stats.total_triangles));
+            ImGui::Text("Cull Ratio: %.1f%%", cull_ratio * 100.0f);
+        }
+
+        ImGui::Separator();
+
+        if (m_enable_shader_stats)
+        {
+            if (debug_settings.render_mode == RenderMode::Meshlets)
+            {
+                ImGui::Text("Task Shader Invocations: %llu", m_perf_stats.task_shader_invocations);
+                ImGui::Text("Mesh Shader Invocations: %llu", m_perf_stats.mesh_shader_invocations);
+            }
+            else
+            {
+                ImGui::TextDisabled("(Shader stats: mesh shaders only)");
+            }
+        }
+        else
+        {
+            ImGui::TextDisabled("(Shader stats disabled)");
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Render Mode: %s", magic_enum::enum_name(debug_settings.render_mode).data());
+
+        if (ImGui::SmallButton("Reset Min/Max"))
+        {
+            m_perf_stats.min_frame_time_ms = FLT_MAX;
+            m_perf_stats.max_frame_time_ms = 0.0f;
+        }
+    }
+    ImGui::End();
+}
+
 void Renderer::render_imgui()
 {
     Scene& scene = Engine::get().scene();
     auto& debug_settings = scene.get_debug_settings();
 
     ImGui::SliderFloat("RenderScale", &m_render_scale, 0.3f, 1.f);
-    // combo_enum(m_render_channel);
-    combo_enum(m_rendering_method);
+    combo_enum(debug_settings.render_mode);
     combo_enum(m_meshlet_render_mode);
+
+    ImGui::Checkbox("Show Performance Overlay", &m_show_perf_overlay);
+    if (m_show_perf_overlay)
+    {
+        ImGui::Indent();
+        ImGui::Checkbox("Enable Shader Stats (has overhead)", &m_enable_shader_stats);
+        ImGui::Unindent();
+    }
 
     ImGui::Separator();
     ImGui::Text("LOD Settings");
@@ -299,7 +433,12 @@ void Renderer::render_imgui()
     ImGui::Text("Meshlet Debug");
 
     bool was_paused = debug_settings.pause_culling;
-    if (ImGui::Checkbox("Pause Culling", &debug_settings.pause_culling))
+
+    ImGui::Checkbox("Frustum culling", &debug_settings.enable_frustum_culling);
+    ImGui::Checkbox("Backface culling", &debug_settings.enable_backface_culling);
+    ImGui::Checkbox("Occlusion culling", &debug_settings.enable_occlusion_culling);
+
+    if (ImGui::Checkbox("Pause", &debug_settings.pause_culling))
     {
         if (debug_settings.pause_culling && !was_paused)
             scene.freeze_culling_camera();
@@ -308,8 +447,6 @@ void Renderer::render_imgui()
     }
 
     ImGui::Checkbox("Show Frustum", &debug_settings.show_frustum);
-    ImGui::Checkbox("Show Meshlet Spheres", &debug_settings.show_meshlet_spheres);
-    ImGui::Checkbox("Show Meshlet Cones", &debug_settings.show_meshlet_cones);
 
     ImGui::Separator();
     ImGui::Text("Meshlet Statistics");
@@ -330,9 +467,40 @@ void Renderer::render()
     Scene& scene = Engine::get().scene();
     auto& debug_settings = scene.get_debug_settings();
 
+    auto current_time = std::chrono::high_resolution_clock::now();
+    float delta_time_ms = std::chrono::duration<float, std::milli>(current_time - m_last_frame_time).count();
+    m_last_frame_time = current_time;
+    update_frametime_stats(delta_time_ms);
+
     auto& ctx = device.get_context();
     const auto& video_out = device.get_video_out();
     const VkExtent2D device_extent = device.get_extent();
+    uint32_t frame_index = device.get_frame_index();
+
+    if (m_enable_shader_stats && m_query_results_available[frame_index] && debug_settings.render_mode == RenderMode::Meshlets)
+    {
+        uint64_t query_results[2] = {0, 0};
+        VkResult result = vkGetQueryPoolResults(device.get(),
+                                                m_pipeline_stats_query_pool,
+                                                frame_index,
+                                                1,
+                                                sizeof(query_results),
+                                                query_results,
+                                                sizeof(uint64_t),
+                                                VK_QUERY_RESULT_64_BIT);
+
+        if (result == VK_SUCCESS)
+        {
+            m_perf_stats.task_shader_invocations = query_results[0];
+            m_perf_stats.mesh_shader_invocations = query_results[1];
+        }
+    }
+
+    if (m_enable_shader_stats)
+    {
+        ctx.dcb.reset_query_pool(m_pipeline_stats_query_pool, frame_index, 1);
+        m_query_results_available[frame_index] = false;
+    }
 
     if (device_extent.width != m_last_device_extent.width || device_extent.height != m_last_device_extent.height)
     {
@@ -382,6 +550,8 @@ void Renderer::render()
     ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
+    scene.cull();
+
     const VkExtent2D draw_extent = {
         .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
         .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
@@ -398,7 +568,7 @@ void Renderer::render()
         ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
         ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-        if (m_rendering_method == RenderMode::CpuDriven || m_rendering_method == RenderMode::GpuDriven)
+        if (debug_settings.render_mode == RenderMode::CpuDriven || debug_settings.render_mode == RenderMode::GpuDriven)
         {
             ctx.dcb.bind_pipeline(m_lit_pipeline.get());
 
@@ -406,7 +576,9 @@ void Renderer::render()
             push_constants.positions = resources.m_merged_position_buffer_address;
             push_constants.vertices = resources.m_merged_vertex_buffer_address;
             push_constants.materials = resources.m_material_buffer_address;
-            push_constants.instances = scene.get_instance_buffer_address();
+            push_constants.instances = debug_settings.render_mode == RenderMode::GpuDriven
+                                           ? scene.get_instance_output_buffer_address()
+                                           : scene.get_instance_buffer_address();
 
             ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                        sizeof(DrawPushConstants),
@@ -426,8 +598,10 @@ void Renderer::render()
             ctx.dcb.bind_descriptors(scene_descriptor);
             ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
         }
-        else if (m_rendering_method == RenderMode::GpuDrivenMeshlets)
+        else if (debug_settings.render_mode == RenderMode::Meshlets)
         {
+            if (m_enable_shader_stats) ctx.dcb.begin_query(m_pipeline_stats_query_pool, frame_index);
+
             ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
 
             VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_mesh_lit_pipeline->get_set_layout(0));
@@ -454,23 +628,26 @@ void Renderer::render()
             push_constants.instances = scene.get_instance_buffer_address();
             push_constants.lod_error_threshold = debug_settings.lod_error_threshold;
             push_constants.camera_fov_y = scene.get_camera_fovy();
-            push_constants.screen_width = static_cast<float>(draw_extent.width);
             push_constants.screen_height = static_cast<float>(draw_extent.height);
             push_constants.force_lod = debug_settings.force_lod;
             push_constants.meshlet_render_mode = m_meshlet_render_mode;
+            push_constants.enable_frustum_culling = debug_settings.enable_frustum_culling;
+            push_constants.enable_backface_culling = debug_settings.enable_backface_culling;
+            push_constants.enable_occlusion_culling = debug_settings.enable_occlusion_culling;
 
             ctx.dcb.set_push_constants(
                 VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 sizeof(MeshDrawPushConstants),
                 &push_constants);
-
-            ctx.dcb.multi_draw_mesh_tasks_indirect(scene.get_mesh_indirect_buffer().buffer,
-                                                   scene.get_mesh_draw_count(),
-                                                   sizeof(VkDrawMeshTasksIndirectCommandEXT),
-                                                   0);
         }
 
-        scene.draw(m_rendering_method);
+        scene.draw();
+
+        if (debug_settings.render_mode == RenderMode::Meshlets && m_enable_shader_stats)
+        {
+            ctx.dcb.end_query(m_pipeline_stats_query_pool, frame_index);
+            m_query_results_available[frame_index] = true;
+        }
     }
 
     render_debug_visualizations();
@@ -562,4 +739,6 @@ void Renderer::render()
     ctx.dcb.transition_image(video_out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     ctx.dcb.copy_image_to_image(m_render_target.image, video_out, draw_extent, device_extent);
+
+    render_performance_overlay();
 }

@@ -52,6 +52,7 @@ Device::Device()
     features.multiDrawIndirect = true;
     features.drawIndirectFirstInstance = true;
     features.shaderInt64 = true;
+    features.pipelineStatisticsQuery = true;
 
     VkPhysicalDeviceVulkan11Features features_11{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     features_11.shaderDrawParameters = true;
@@ -73,6 +74,7 @@ Device::Device()
                                                                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
     mesh_shader_features.meshShader = true;
     mesh_shader_features.taskShader = true;
+    mesh_shader_features.meshShaderQueries = true;
 
     vkb::PhysicalDeviceSelector selector{instance};
     vkb::PhysicalDevice physical_device = selector.set_minimum_version(1, 3)
@@ -239,7 +241,7 @@ bool Device::begin_frame()
     auto& ctx = get_context();
     uint32_t frame_index = m_frame_count % static_cast<uint32_t>(m_syncs.size());
 
-    VK_CHECK(vkWaitForFences(m_device, 1, &m_syncs[frame_index].in_flight_fence, true, 1000000000));
+    VK_CHECK(vkWaitForFences(m_device, 1, &m_syncs[frame_index].in_flight_fence, true, 10000000000));
 
     ctx.deletion_queue.flush();
     ctx.allocator.clear_descriptors();

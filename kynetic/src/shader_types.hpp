@@ -70,12 +70,15 @@ struct MeshDrawPushConstants
     VkDeviceAddress materials;
     float lod_error_threshold;  // Screen-space error threshold in pixels
     float camera_fov_y;
-    float screen_width;
     float screen_height;
     uint32_t force_lod;  // 0 = auto, 1+ = force specific LOD level
     DebugMeshletRenderMode meshlet_render_mode;
 
-    float pad0, pad1;
+    uint32_t enable_frustum_culling;
+    uint32_t enable_backface_culling;
+    uint32_t enable_occlusion_culling;
+
+    float pad0;
 };
 
 struct DrawPushConstants
@@ -86,11 +89,12 @@ struct DrawPushConstants
 
     VkDeviceAddress instances;
 };
-
 struct FrustumCullPushConstants
 {
     VkDeviceAddress draw_commands;
+
     uint32_t draw_count;
+    uint32_t instance_count;
 };
 
 struct SceneData
@@ -125,8 +129,10 @@ struct InstanceData
 {
     column_major float4x4 model;
     column_major float4x4 model_inv;
+    float4 position;
     uint32_t material_index;
-    uint32_t pad, pad2, pad3;
+    uint32_t draw_id;
+    uint32_t pad0, pad1;
 };
 
 struct MaterialData

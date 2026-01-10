@@ -108,11 +108,11 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
                 int(meshlet.cone_axis[2]) / 127.0)));
             float cone_cutoff = int(meshlet.cone_cutoff) / 127.0;
 
-            accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
-            accept = accept && is_visible(cull_frustum, center.xyz, radius);
+            if (constants.enable_backface_culling == 1) accept = !cone_cull(center.xyz, radius, cone_axis, cone_cutoff, cull_camera_pos);
+            if (constants.enable_frustum_culling == 1) accept = accept && is_visible(cull_frustum, center.xyz, radius);
 
             float4 aabb;
-            if (accept)
+            if (accept && constants.enable_occlusion_culling == 1)
             {
                 float4x4 cull_view = scene.use_debug_culling > 0 ? scene.debug_view : scene.view;
                 float4 view_center = mul(cull_view, center);
