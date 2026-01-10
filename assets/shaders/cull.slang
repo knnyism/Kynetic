@@ -18,29 +18,4 @@ RWStructuredBuffer<InstanceData>               instances;
 [numthreads(64, 1, 1)]
 void main(uint3 global_id : SV_DispatchThreadID)
 {
-    uint id = global_id.x;
-
-    if (id >= constants.draw_count) return;
-    
-    float4[6] cull_frustum = scene.use_debug_culling > 0 ? scene.debug_frustum : scene.frustum;
-
-    VkDrawIndexedIndirectCommand* draw_commands = (VkDrawIndexedIndirectCommand*)constants.draw_commands;
-
-    VkDrawIndexedIndirectCommand draw_command = draw_commands[id];
-    uint32_t write_index = draw_command.firstInstance;
-
-    for (uint32_t read_index = draw_command.firstInstance;
-         read_index < draw_command.firstInstance + draw_command.instanceCount; 
-                  ++read_index)
-    {
-        InstanceData read_instance = instances[read_index];
-
-        if (is_visible(cull_frustum, read_instance.position.xyz, read_instance.position.w)) {
-            if (write_index != read_index) instances[write_index] = read_instance;
-            write_index++;
-        }
-    }
-
-    draw_command.instanceCount = write_index - draw_command.firstInstance;
-    draw_commands[id] = draw_command;
 }

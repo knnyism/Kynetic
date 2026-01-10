@@ -78,12 +78,10 @@ float lambertian() { return 1.0 / PI; }
 
 bool is_visible(float4[6] planes, float3 origin, float radius)
 {
-    for (uint i = 0; i < 6; ++i)
-    {
-        if (i == 2 || i == 3) continue;
-        if (dot(origin, planes[i].xyz) + planes[i].w + radius < 0) return false;
-    }
-    return true;
+    return dot(origin, planes[0].xyz) + planes[0].w + radius >= 0
+        && dot(origin, planes[1].xyz) + planes[1].w + radius >= 0
+        && dot(origin, planes[4].xyz) + planes[4].w + radius >= 0
+        && dot(origin, planes[5].xyz) + planes[5].w + radius >= 0;
 }
 
 bool cone_cull(float3 center, float radius, float3 cone_axis, float cone_cutoff, float3 camera_position)

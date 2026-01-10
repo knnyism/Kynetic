@@ -125,7 +125,6 @@ struct InstanceData
 {
     column_major float4x4 model;
     column_major float4x4 model_inv;
-    float4 position;
     uint32_t material_index;
     uint32_t pad, pad2, pad3;
 };

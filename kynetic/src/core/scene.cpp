@@ -28,12 +28,23 @@ static void get_frustum_planes(glm::mat4x4& view_projection, glm::vec4* out)
         }
     }
 
+    // Appendix A.2 – Normalizing the Plane Equation
     for (int plane = 0; plane < 6; ++plane) out[plane] /= glm::length(glm::vec3(out[plane]));
 }
 
 static bool is_visible(glm::vec4* planes, glm::vec3 origin, float radius)
 {
+    // We ignore the near and far planes as we're far less likely to cull
+    // objects based on those planes. Especially with games that have big
+    // values for the far plane.
+
+    // For example, an object moving left relative to the camera is more
+    // likely to leave the screen faster than an object moving away from
+    // the camera.
+
     std::array<int, 4> V{0, 1, 4, 5};
+
+    // Return true if all planes have the sphere on the positive side
     return std::ranges::all_of(V,
                                [planes, origin, radius](size_t i)
                                {
@@ -71,31 +82,6 @@ Scene::Scene()
 }
 
 Scene::~Scene() = default;
-
-void Scene::cpu_cull()
-{
-    auto& planes = m_debug_settings.pause_culling ? m_scene_data.debug_frustum : m_scene_data.frustum;
-
-    for (VkDrawIndexedIndirectCommand& draw_command : m_draws)
-    {
-        uint32_t write_index = draw_command.firstInstance;
-
-        for (uint32_t read_index = draw_command.firstInstance;
-             read_index < draw_command.firstInstance + draw_command.instanceCount;
-             ++read_index)
-        {
-            InstanceData& read_instance = m_instances[read_index];
-
-            if (is_visible(planes, read_instance.position, read_instance.position.w))
-            {
-                if (write_index != read_index) m_instances[write_index] = m_instances[read_index];
-                write_index++;
-            }
-        }
-
-        draw_command.instanceCount = write_index - draw_command.firstInstance;
-    }
-}
 
 void Scene::gpu_cull() const
 {
@@ -234,65 +220,6 @@ void Scene::update()
             m_camera_fovy = camera.fovy;
         });
 
-    m_draws.clear();
-    m_mesh_draw_data.clear();
-    m_mesh_indirect_commands.clear();
-    m_instances.clear();
-
-    Mesh* last_mesh = nullptr;
-    m_mesh_query.each(
-        [&](const TransformComponent& t, const MeshComponent& m)
-        {
-            glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
-
-            float max_scale =
-                glm::max(glm::length(glm::vec3(t.transform[0])),
-                         glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
-            uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
-
-            InstanceData& instance = m_instances.emplace_back();
-            instance.model = t.transform;
-            instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
-            instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
-            instance.material_index = m.mesh->get_material()->get_handle();
-
-            uint32_t meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
-            uint32_t lod_group_count = static_cast<uint32_t>(m.mesh->get_lod_group_count());
-
-            MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
-            draw_data.positions = m.mesh->get_position_buffer_address();
-            draw_data.vertices = m.mesh->get_vertex_buffer_address();
-            draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
-            draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
-            draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
-            draw_data.lod_groups = m.mesh->get_lod_groups_buffer_address();
-            draw_data.instance_index = instance_index;
-            draw_data.meshlet_count = meshlet_count;
-            draw_data.lod_group_count = lod_group_count;
-
-            VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
-            indirect_cmd.groupCountX = static_cast<uint32_t>(std::ceilf(static_cast<float>(meshlet_count) / 32.0f));
-            indirect_cmd.groupCountY = 1;
-            indirect_cmd.groupCountZ = 1;
-
-            if (last_mesh == m.mesh.get())
-            {
-                m_draws.back().instanceCount++;
-            }
-            else
-            {
-                VkDrawIndexedIndirectCommand& draw = m_draws.emplace_back();
-                draw.firstIndex = m.mesh->get_index_offset();
-                draw.indexCount = m.mesh->get_index_count();
-                draw.firstInstance = static_cast<uint32_t>(m_instances.size() - 1);
-                draw.instanceCount = 1;
-                draw.vertexOffset = static_cast<int32_t>(m.mesh->get_vertex_offset());
-
-                last_mesh = m.mesh.get();
-            }
-        });
-
     glm::mat4 vp = m_projection * m_view;
 
     m_scene_data = SceneData{
@@ -323,6 +250,67 @@ void Scene::update()
     get_frustum_planes(m_debug_settings.frozen_vp, m_scene_data.debug_frustum);
 
     if (!m_debug_settings.pause_culling) m_previous_vp = vp;
+
+    m_draws.clear();
+    m_mesh_draw_data.clear();
+    m_mesh_indirect_commands.clear();
+    m_instances.clear();
+
+    auto& cull_planes = m_debug_settings.pause_culling ? m_scene_data.debug_frustum : m_scene_data.frustum;
+
+    Mesh* last_mesh = nullptr;
+    m_mesh_query.each(
+        [&](const TransformComponent& t, const MeshComponent& m)
+        {
+            glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
+
+            float max_scale =
+                glm::max(glm::length(glm::vec3(t.transform[0])),
+                         glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
+
+            if (is_visible(cull_planes, world_center, m.mesh->get_radius() * max_scale))
+            {
+                uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
+
+                InstanceData& instance = m_instances.emplace_back();
+                instance.model = t.transform;
+                instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
+                instance.material_index = m.mesh->get_material()->get_handle();
+
+                MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
+                draw_data.positions = m.mesh->get_position_buffer_address();
+                draw_data.vertices = m.mesh->get_vertex_buffer_address();
+                draw_data.meshlets = m.mesh->get_meshlet_buffer_address();
+                draw_data.meshlet_vertices = m.mesh->get_meshlet_vertices_buffer_address();
+                draw_data.meshlet_triangles = m.mesh->get_meshlet_triangles_buffer_address();
+                draw_data.lod_groups = m.mesh->get_lod_groups_buffer_address();
+                draw_data.instance_index = instance_index;
+                draw_data.meshlet_count = static_cast<uint32_t>(m.mesh->get_meshlet_count());
+                draw_data.lod_group_count = static_cast<uint32_t>(m.mesh->get_lod_group_count());
+
+                VkDrawMeshTasksIndirectCommandEXT& indirect_cmd = m_mesh_indirect_commands.emplace_back();
+                indirect_cmd.groupCountX =
+                    static_cast<uint32_t>(std::ceilf(static_cast<float>(m.mesh->get_meshlet_count()) / 32.f));
+                indirect_cmd.groupCountY = 1;
+                indirect_cmd.groupCountZ = 1;
+
+                if (last_mesh == m.mesh.get())
+                {
+                    m_draws.back().instanceCount++;
+                }
+                else
+                {
+                    VkDrawIndexedIndirectCommand& draw = m_draws.emplace_back();
+                    draw.firstIndex = m.mesh->get_index_offset();
+                    draw.indexCount = m.mesh->get_index_count();
+                    draw.firstInstance = static_cast<uint32_t>(m_instances.size() - 1);
+                    draw.instanceCount = 1;
+                    draw.vertexOffset = static_cast<int32_t>(m.mesh->get_vertex_offset());
+
+                    last_mesh = m.mesh.get();
+                }
+            }
+        });
 
     update_buffers();
 }
@@ -520,26 +508,6 @@ AllocatedBuffer Scene::get_mesh_indirect_buffer() const
     const Device& device = Engine::get().device();
     uint32_t frame_index = device.get_frame_index();
     return m_mesh_indirect_buffers[frame_index];
-}
-
-void Scene::cull(RenderMode render_mode)
-{
-    switch (render_mode)
-    {
-        case RenderMode::CpuDriven:
-        {
-            cpu_cull();
-            update_buffers();
-        }
-        break;
-        case RenderMode::GpuDriven:
-        {
-            gpu_cull();
-        }
-        break;
-        case RenderMode::GpuDrivenMeshlets:
-            break;
-    }
 }
 
 void Scene::draw(RenderMode render_mode) const

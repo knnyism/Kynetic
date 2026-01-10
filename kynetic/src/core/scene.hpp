@@ -74,7 +74,6 @@ class Scene
 
     DebugSettings m_debug_settings;
 
-    void cpu_cull();
     void gpu_cull() const;
 
     void update();

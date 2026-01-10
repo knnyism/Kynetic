@@ -386,8 +386,6 @@ void Renderer::render()
         .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
         .height = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.height) * m_render_scale)};
 
-    scene.cull(m_rendering_method);
-
     VkRenderingAttachmentInfo color_attachment =
         vk_init::attachment_info(m_render_target.view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depth_attachment =
