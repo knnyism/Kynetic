@@ -26,8 +26,6 @@ Sampler2D<float>                           depth_pyramid_texture;
 [[vk::binding(0, 1)]] Sampler2D             textures[];
 [[vk::push_constant]] MeshDrawPushConstants constants;
 
-groupshared MeshPayload payload;
-
 // From clusterlod.h
 // camera_proj is projection[1][1], or cot(fovy/2); camera_znear is *positive* near plane distance
 // (0..1; multiply by screen height to get pixels) approximate (perspective) projection error of a cluster in screen space
@@ -67,10 +65,16 @@ bool is_lod_selected(MeshletData meshlet, LODGroupData *lod_groups, float4x4 tra
     return cluster_error > constants.lod_error_threshold && refined_error <= constants.lod_error_threshold;
 }
 
+groupshared MeshPayload payload;
+groupshared uint accepted_count;
+
 [shader("amplification")]
 [numthreads(32, 1, 1)]
 void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_GroupThreadID, uint draw_id: SV_DrawIndex)
 {
+    if (group_thread_id == 0) accepted_count = 0;
+    GroupMemoryBarrierWithGroupSync();
+
     MeshDrawData* draws = (MeshDrawData*)constants.draws;
     MeshDrawData draw = draws[draw_id];
 
@@ -147,22 +151,24 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
         }
     }
 
-    uint index = WavePrefixCountBits(accept);
-    uint count = WaveActiveCountBits(accept);
-
-    if (accept) payload.meshlet_indices[index] = meshlet_index;
+    if (accept)
+    {
+        uint index;
+        InterlockedAdd(accepted_count, 1, index);
+        payload.meshlet_indices[index] = meshlet_index;
+    }
+    GroupMemoryBarrierWithGroupSync();
 
     payload.draw_index = draw_id;
 
-    if (group_thread_id == 0 && count > 0)
-        DispatchMesh(count, 1, 1, payload);
+    if (group_thread_id == 0 && accepted_count > 0) DispatchMesh(accepted_count, 1, 1, payload);
 }
 
 [shader("mesh")]
 [outputtopology("triangle")]
-[numthreads(64, 1, 1)]
+[numthreads(128, 1, 1)]
 void mesh_main(
-    OutputIndices<uint3, 64> triangles, 
+    OutputIndices<uint3, 126> triangles, 
     OutputVertices<CoarseVertex, 64> vertices,
     in payload MeshPayload mesh_payload,
     uint group_id: SV_GroupID,

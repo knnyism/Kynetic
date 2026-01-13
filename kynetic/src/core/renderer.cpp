@@ -438,7 +438,7 @@ void Renderer::render_imgui()
     ImGui::Checkbox("Backface culling", &debug_settings.enable_backface_culling);
     ImGui::Checkbox("Occlusion culling", &debug_settings.enable_occlusion_culling);
 
-    if (ImGui::Checkbox("Pause", &debug_settings.pause_culling))
+    if (ImGui::Checkbox("Pause culling", &debug_settings.pause_culling))
     {
         if (debug_settings.pause_culling && !was_paused)
             scene.freeze_culling_camera();
@@ -447,17 +447,6 @@ void Renderer::render_imgui()
     }
 
     ImGui::Checkbox("Show Frustum", &debug_settings.show_frustum);
-
-    ImGui::Separator();
-    ImGui::Text("Meshlet Statistics");
-    ImGui::Text("Total Meshlets: %u", debug_settings.total_meshlets);
-    ImGui::Text("Visible Meshlets: %u", debug_settings.visible_meshlets);
-    if (debug_settings.total_meshlets > 0)
-    {
-        float cull_ratio =
-            1.0f - (static_cast<float>(debug_settings.visible_meshlets) / static_cast<float>(debug_settings.total_meshlets));
-        ImGui::Text("Cull Ratio: %.1f%%", cull_ratio * 100.0f);
-    }
 }
 
 void Renderer::render()

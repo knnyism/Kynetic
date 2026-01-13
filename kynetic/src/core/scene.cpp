@@ -344,16 +344,10 @@ void Scene::update()
             m_mesh_query.each(
                 [&](const TransformComponent& t, const MeshComponent& m)
                 {
-                    glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
-
-                    float max_scale =
-                        glm::max(glm::length(glm::vec3(t.transform[0])),
-                                 glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
                     InstanceData& instance = m_instances.emplace_back();
                     instance.model = t.transform;
                     instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
-                    instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
+                    instance.position = glm::vec4(m.mesh->get_centroid(), m.mesh->get_radius());
                     instance.material_index = m.mesh->get_material()->get_handle();
 
                     if (last_mesh == m.mesh.get())
@@ -379,18 +373,12 @@ void Scene::update()
         m_mesh_query_unordered.each(
             [&](const TransformComponent& t, const MeshComponent& m)
             {
-                glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
-
-                float max_scale =
-                    glm::max(glm::length(glm::vec3(t.transform[0])),
-                             glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
                 uint32_t instance_index = static_cast<uint32_t>(m_instances.size());
 
                 InstanceData& instance = m_instances.emplace_back();
                 instance.model = t.transform;
                 instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
-                instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
+                instance.position = glm::vec4(m.mesh->get_centroid(), m.mesh->get_radius());
                 instance.material_index = m.mesh->get_material()->get_handle();
 
                 MeshDrawData& draw_data = m_mesh_draw_data.emplace_back();
@@ -417,16 +405,10 @@ void Scene::update()
         m_mesh_query.each(
             [&](const TransformComponent& t, const MeshComponent& m)
             {
-                glm::vec3 world_center = glm::vec3(t.transform * glm::vec4(m.mesh->get_centroid(), 1.0f));
-
-                float max_scale =
-                    glm::max(glm::length(glm::vec3(t.transform[0])),
-                             glm::max(glm::length(glm::vec3(t.transform[1])), glm::length(glm::vec3(t.transform[2]))));
-
                 InstanceData& instance = m_instances.emplace_back();
                 instance.model = t.transform;
                 instance.model_inv = glm::transpose(glm::inverse(glm::mat3(t.transform)));
-                instance.position = glm::vec4(world_center, m.mesh->get_radius() * max_scale);
+                instance.position = glm::vec4(m.mesh->get_centroid(), m.mesh->get_radius());
                 instance.material_index = m.mesh->get_material()->get_handle();
 
                 if (last_mesh != m.mesh.get())
