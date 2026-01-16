@@ -40,8 +40,8 @@ Mesh::Mesh(const std::filesystem::path& path,
 
     calculate_bounds(unindexed_positions);
 
-    clodConfig config = clodDefaultConfig(126);
-    config.max_vertices = 64;
+    clodConfig config = clodDefaultConfig(64);
+    config.max_vertices = 32;
 
     clodMesh mesh{};
     mesh.indices = indices.data();

@@ -97,6 +97,7 @@ void CommandBuffer::copy_image_to_image(VkImage source,
 
     vkCmdBlitImage2(m_command_buffer, &blitInfo);
 }
+
 void CommandBuffer::copy_buffer_to_image(VkBuffer srcBuffer,
                                          VkImage dstImage,
                                          VkImageLayout dstImageLayout,
@@ -105,6 +106,7 @@ void CommandBuffer::copy_buffer_to_image(VkBuffer srcBuffer,
 {
     vkCmdCopyBufferToImage(m_command_buffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 }
+
 void CommandBuffer::copy_buffer(VkBuffer srcBuffer,
                                 VkBuffer dstBuffer,
                                 uint32_t regionCount,
@@ -117,6 +119,7 @@ void CommandBuffer::begin_rendering(const VkRenderingInfo& rendering_info) const
 {
     vkCmdBeginRendering(m_command_buffer, &rendering_info);
 }
+
 void CommandBuffer::end_rendering() const { vkCmdEndRendering(m_command_buffer); }
 
 void CommandBuffer::set_viewport(float width, float height) const
@@ -277,4 +280,44 @@ void CommandBuffer::begin_query(VkQueryPool query_pool, uint32_t query, VkQueryC
 void CommandBuffer::end_query(VkQueryPool query_pool, uint32_t query) const
 {
     vkCmdEndQuery(m_command_buffer, query_pool, query);
+}
+
+void CommandBuffer::begin_label(const char* name, float r, float g, float b, float a) const
+{
+    if (vkCmdBeginDebugUtilsLabelEXT)
+    {
+        VkDebugUtilsLabelEXT label_info{};
+        label_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        label_info.pLabelName = name;
+        label_info.color[0] = r;
+        label_info.color[1] = g;
+        label_info.color[2] = b;
+        label_info.color[3] = a;
+
+        vkCmdBeginDebugUtilsLabelEXT(m_command_buffer, &label_info);
+    }
+}
+
+void CommandBuffer::end_label() const
+{
+    if (vkCmdEndDebugUtilsLabelEXT)
+    {
+        vkCmdEndDebugUtilsLabelEXT(m_command_buffer);
+    }
+}
+
+void CommandBuffer::insert_label(const char* name, float r, float g, float b, float a) const
+{
+    if (vkCmdInsertDebugUtilsLabelEXT)
+    {
+        VkDebugUtilsLabelEXT label_info{};
+        label_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        label_info.pLabelName = name;
+        label_info.color[0] = r;
+        label_info.color[1] = g;
+        label_info.color[2] = b;
+        label_info.color[3] = a;
+
+        vkCmdInsertDebugUtilsLabelEXT(m_command_buffer, &label_info);
+    }
 }

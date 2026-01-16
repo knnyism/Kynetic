@@ -261,6 +261,8 @@ void Renderer::render_frustum_lines()
     auto frustum_lines = scene.get_frustum_lines();
     if (frustum_lines.empty()) return;
 
+    ctx.dcb.begin_label("Debug Frustum Lines", 1.0f, 1.0f, 0.0f);
+
     size_t buffer_size = frustum_lines.size() * sizeof(DebugLineVertex);
     AllocatedBuffer line_buffer = device.create_buffer(
         buffer_size,
@@ -297,6 +299,8 @@ void Renderer::render_frustum_lines()
                                &push_constants);
 
     ctx.dcb.draw_auto(static_cast<uint32_t>(frustum_lines.size()), 1, 0, 0);
+
+    ctx.dcb.end_label();
 }
 
 void Renderer::render_debug_visualizations() { render_frustum_lines(); }
@@ -466,6 +470,8 @@ void Renderer::render()
     const VkExtent2D device_extent = device.get_extent();
     uint32_t frame_index = device.get_frame_index();
 
+    ctx.dcb.begin_label("Frame", 0.8f, 0.8f, 0.8f);
+
     if (m_enable_shader_stats && m_query_results_available[frame_index] && debug_settings.render_mode == RenderMode::Meshlets)
     {
         uint64_t query_results[2] = {0, 0};
@@ -493,6 +499,8 @@ void Renderer::render()
 
     if (device_extent.width != m_last_device_extent.width || device_extent.height != m_last_device_extent.height)
     {
+        ctx.dcb.begin_label("Resize", 1.0f, 0.5f, 0.0f);
+
         m_last_device_extent = device_extent;
         m_last_render_scale = m_render_scale;
 
@@ -503,43 +511,71 @@ void Renderer::render()
         init_depth_pyramid();
 
         ctx.dcb.transition_image(m_depth_pyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+        ctx.dcb.end_label();
     }
 
     if (m_last_render_scale != m_render_scale)
     {
+        ctx.dcb.begin_label("Render Scale Change", 1.0f, 0.5f, 0.0f);
+
         m_last_render_scale = m_render_scale;
 
         destroy_depth_pyramid();
         init_depth_pyramid();
 
         ctx.dcb.transition_image(m_depth_pyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+        ctx.dcb.end_label();
     }
 
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
-    ctx.dcb.bind_pipeline(m_clear_pipeline.get());
     {
-        VkDescriptorSet image_descriptor = ctx.allocator.allocate(m_clear_pipeline->get_set_layout(0));
+        ctx.dcb.begin_label("Sky Clear", 0.4f, 0.7f, 1.0f);
+
+        ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+        ctx.dcb.bind_pipeline(m_clear_pipeline.get());
         {
-            DescriptorWriter writer;
-            writer.write_image(0,
-                               m_render_target.view,
-                               VK_NULL_HANDLE,
-                               VK_IMAGE_LAYOUT_GENERAL,
-                               VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-            writer.write_buffer(1, scene.get_scene_buffer().buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-            writer.update_set(device.get(), image_descriptor);
+            VkDescriptorSet image_descriptor = ctx.allocator.allocate(m_clear_pipeline->get_set_layout(0));
+            {
+                DescriptorWriter writer;
+                writer.write_image(0,
+                                   m_render_target.view,
+                                   VK_NULL_HANDLE,
+                                   VK_IMAGE_LAYOUT_GENERAL,
+                                   VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+                writer.write_buffer(1,
+                                    scene.get_scene_buffer().buffer,
+                                    sizeof(SceneData),
+                                    0,
+                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                writer.update_set(device.get(), image_descriptor);
+            }
+            ctx.dcb.bind_descriptors(image_descriptor);
         }
-        ctx.dcb.bind_descriptors(image_descriptor);
+        ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.width) / 16.0f)),
+                         static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.height) / 16.0f)),
+                         1);
+
+        ctx.dcb.end_label();
     }
-    ctx.dcb.dispatch(static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.width) / 16.0f)),
-                     static_cast<uint32_t>(std::ceilf(static_cast<float>(m_render_target.extent.height) / 16.0f)),
-                     1);
 
-    ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    {
+        ctx.dcb.begin_label("Transition Render Targets", 0.5f, 0.5f, 0.5f);
 
-    scene.cull();
+        ctx.dcb.transition_image(m_render_target.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        ctx.dcb.transition_image(m_depth_render_target.image,
+                                 VK_IMAGE_LAYOUT_UNDEFINED,
+                                 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+        ctx.dcb.end_label();
+    }
+
+    {
+        ctx.dcb.begin_label("GPU Culling", 1.0f, 0.5f, 0.5f);
+        scene.cull();
+        ctx.dcb.end_label();
+    }
 
     const VkExtent2D draw_extent = {
         .width = static_cast<uint32_t>(static_cast<float>(m_render_target.extent.width) * m_render_scale),
@@ -552,182 +588,224 @@ void Renderer::render()
 
     VkRenderingInfo render_info = vk_init::rendering_info(draw_extent, &color_attachment, &depth_attachment);
 
-    ctx.dcb.begin_rendering(render_info);
     {
-        ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
-        ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
+        ctx.dcb.begin_label("Geometry Pass", 0.2f, 0.8f, 0.2f);
 
-        if (debug_settings.render_mode == RenderMode::CpuDriven || debug_settings.render_mode == RenderMode::GpuDriven)
+        ctx.dcb.begin_rendering(render_info);
         {
-            ctx.dcb.bind_pipeline(m_lit_pipeline.get());
+            ctx.dcb.set_viewport(static_cast<float>(draw_extent.width), static_cast<float>(draw_extent.height));
+            ctx.dcb.set_scissor(draw_extent.width, draw_extent.height);
 
-            DrawPushConstants push_constants;
-            push_constants.positions = resources.m_merged_position_buffer_address;
-            push_constants.vertices = resources.m_merged_vertex_buffer_address;
-            push_constants.materials = resources.m_material_buffer_address;
-            push_constants.instances = debug_settings.render_mode == RenderMode::GpuDriven
-                                           ? scene.get_instance_output_buffer_address()
-                                           : scene.get_instance_buffer_address();
-
-            ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                       sizeof(DrawPushConstants),
-                                       &push_constants);
-            ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
-
-            VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_lit_pipeline->get_set_layout(0));
+            if (debug_settings.render_mode == RenderMode::CpuDriven || debug_settings.render_mode == RenderMode::GpuDriven)
             {
-                DescriptorWriter writer;
-                writer.write_buffer(0,
-                                    scene.get_scene_buffer().buffer,
-                                    sizeof(SceneData),
-                                    0,
-                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-                writer.update_set(device.get(), scene_descriptor);
+                ctx.dcb.begin_label("Traditional Rendering", 0.3f, 0.7f, 0.3f);
+
+                ctx.dcb.bind_pipeline(m_lit_pipeline.get());
+
+                DrawPushConstants push_constants;
+                push_constants.positions = resources.m_merged_position_buffer_address;
+                push_constants.vertices = resources.m_merged_vertex_buffer_address;
+                push_constants.materials = resources.m_material_buffer_address;
+                push_constants.instances = debug_settings.render_mode == RenderMode::GpuDriven
+                                               ? scene.get_instance_output_buffer_address()
+                                               : scene.get_instance_buffer_address();
+
+                ctx.dcb.set_push_constants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                           sizeof(DrawPushConstants),
+                                           &push_constants);
+                ctx.dcb.bind_index_buffer(resources.m_merged_index_buffer.buffer, VK_INDEX_TYPE_UINT32);
+
+                VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_lit_pipeline->get_set_layout(0));
+                {
+                    DescriptorWriter writer;
+                    writer.write_buffer(0,
+                                        scene.get_scene_buffer().buffer,
+                                        sizeof(SceneData),
+                                        0,
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                    writer.update_set(device.get(), scene_descriptor);
+                }
+                ctx.dcb.bind_descriptors(scene_descriptor);
+                ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
+
+                ctx.dcb.end_label();
             }
-            ctx.dcb.bind_descriptors(scene_descriptor);
-            ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
-        }
-        else if (debug_settings.render_mode == RenderMode::Meshlets)
-        {
-            if (m_enable_shader_stats) ctx.dcb.begin_query(m_pipeline_stats_query_pool, frame_index);
-
-            ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
-
-            VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_mesh_lit_pipeline->get_set_layout(0));
+            else if (debug_settings.render_mode == RenderMode::Meshlets)
             {
-                DescriptorWriter writer;
-                writer.write_buffer(0,
-                                    scene.get_scene_buffer().buffer,
-                                    sizeof(SceneData),
-                                    0,
-                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-                writer.write_image(1,
-                                   m_depth_pyramid.view,
-                                   m_depth_pyramid_sampler,
-                                   VK_IMAGE_LAYOUT_GENERAL,
-                                   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-                writer.update_set(device.get(), scene_descriptor);
+                ctx.dcb.begin_label("Mesh Shader Rendering", 0.8f, 0.3f, 0.8f);
+
+                if (m_enable_shader_stats) ctx.dcb.begin_query(m_pipeline_stats_query_pool, frame_index);
+
+                ctx.dcb.bind_pipeline(m_mesh_lit_pipeline.get());
+
+                VkDescriptorSet scene_descriptor = ctx.allocator.allocate(m_mesh_lit_pipeline->get_set_layout(0));
+                {
+                    DescriptorWriter writer;
+                    writer.write_buffer(0,
+                                        scene.get_scene_buffer().buffer,
+                                        sizeof(SceneData),
+                                        0,
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                    writer.write_image(1,
+                                       m_depth_pyramid.view,
+                                       m_depth_pyramid_sampler,
+                                       VK_IMAGE_LAYOUT_GENERAL,
+                                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                    writer.update_set(device.get(), scene_descriptor);
+                }
+                ctx.dcb.bind_descriptors(scene_descriptor);
+                ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
+
+                MeshDrawPushConstants push_constants;
+                push_constants.draws = scene.get_mesh_draw_data_buffer_address();
+                push_constants.materials = resources.m_material_buffer_address;
+                push_constants.instances = scene.get_instance_buffer_address();
+                push_constants.lod_error_threshold = debug_settings.lod_error_threshold;
+                push_constants.camera_fov_y = scene.get_camera_fovy();
+                push_constants.screen_height = static_cast<float>(draw_extent.height);
+                push_constants.force_lod = debug_settings.force_lod;
+                push_constants.meshlet_render_mode = m_meshlet_render_mode;
+                push_constants.enable_frustum_culling = debug_settings.enable_frustum_culling;
+                push_constants.enable_backface_culling = debug_settings.enable_backface_culling;
+                push_constants.enable_occlusion_culling = debug_settings.enable_occlusion_culling;
+
+                ctx.dcb.set_push_constants(
+                    VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                    sizeof(MeshDrawPushConstants),
+                    &push_constants);
+
+                ctx.dcb.end_label();
             }
-            ctx.dcb.bind_descriptors(scene_descriptor);
-            ctx.dcb.bind_descriptors(device.get_bindless_set(), 1);
 
-            MeshDrawPushConstants push_constants;
-            push_constants.draws = scene.get_mesh_draw_data_buffer_address();
-            push_constants.materials = resources.m_material_buffer_address;
-            push_constants.instances = scene.get_instance_buffer_address();
-            push_constants.lod_error_threshold = debug_settings.lod_error_threshold;
-            push_constants.camera_fov_y = scene.get_camera_fovy();
-            push_constants.screen_height = static_cast<float>(draw_extent.height);
-            push_constants.force_lod = debug_settings.force_lod;
-            push_constants.meshlet_render_mode = m_meshlet_render_mode;
-            push_constants.enable_frustum_culling = debug_settings.enable_frustum_culling;
-            push_constants.enable_backface_culling = debug_settings.enable_backface_culling;
-            push_constants.enable_occlusion_culling = debug_settings.enable_occlusion_culling;
+            {
+                ctx.dcb.begin_label("Draw Calls", 0.9f, 0.9f, 0.2f);
+                scene.draw();
+                ctx.dcb.end_label();
+            }
 
-            ctx.dcb.set_push_constants(
-                VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                sizeof(MeshDrawPushConstants),
-                &push_constants);
+            if (debug_settings.render_mode == RenderMode::Meshlets && m_enable_shader_stats)
+            {
+                ctx.dcb.end_query(m_pipeline_stats_query_pool, frame_index);
+                m_query_results_available[frame_index] = true;
+            }
         }
 
-        scene.draw();
-
-        if (debug_settings.render_mode == RenderMode::Meshlets && m_enable_shader_stats)
         {
-            ctx.dcb.end_query(m_pipeline_stats_query_pool, frame_index);
-            m_query_results_available[frame_index] = true;
+            ctx.dcb.begin_label("Debug Visualizations", 1.0f, 1.0f, 0.0f);
+            render_debug_visualizations();
+            ctx.dcb.end_label();
         }
+
+        ctx.dcb.end_rendering();
+
+        ctx.dcb.end_label();
     }
 
-    render_debug_visualizations();
-
-    ctx.dcb.end_rendering();
-
-    ctx.dcb.transition_image(m_depth_render_target.image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
-
-    if (!debug_settings.pause_culling)
     {
-        ctx.dcb.bind_pipeline(m_depth_pyramid_pipeline.get());
+        ctx.dcb.begin_label("Depth Pyramid", 0.6f, 0.3f, 0.9f);
+
+        ctx.dcb.transition_image(m_depth_render_target.image,
+                                 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_GENERAL);
+
+        if (!debug_settings.pause_culling)
         {
-            uint32_t width = m_depth_pyramid.extent.width;
-            uint32_t height = m_depth_pyramid.extent.height;
-
-            for (uint32_t mip_index = 0; mip_index < m_depth_pyramid_levels; ++mip_index)
+            ctx.dcb.bind_pipeline(m_depth_pyramid_pipeline.get());
             {
+                uint32_t width = m_depth_pyramid.extent.width;
+                uint32_t height = m_depth_pyramid.extent.height;
+
+                for (uint32_t mip_index = 0; mip_index < m_depth_pyramid_levels; ++mip_index)
                 {
-                    VkImageMemoryBarrier write_barrier{};
-                    write_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    write_barrier.srcAccessMask = (mip_index == 0) ? 0 : VK_ACCESS_SHADER_READ_BIT;
-                    write_barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                    write_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    write_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    write_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    write_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    write_barrier.image = m_depth_pyramid.image;
-                    write_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                    write_barrier.subresourceRange.baseMipLevel = mip_index;
-                    write_barrier.subresourceRange.levelCount = 1;
-                    write_barrier.subresourceRange.baseArrayLayer = 0;
-                    write_barrier.subresourceRange.layerCount = 1;
+                    ctx.dcb.begin_label(fmt::format("Mip Level {}", mip_index).c_str(), 0.5f, 0.2f, 0.8f);
 
-                    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                             0,
-                                             0,
-                                             nullptr,
-                                             0,
-                                             nullptr,
-                                             1,
-                                             &write_barrier);
+                    {
+                        VkImageMemoryBarrier write_barrier{};
+                        write_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                        write_barrier.srcAccessMask = (mip_index == 0) ? 0 : VK_ACCESS_SHADER_READ_BIT;
+                        write_barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                        write_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                        write_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                        write_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        write_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        write_barrier.image = m_depth_pyramid.image;
+                        write_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                        write_barrier.subresourceRange.baseMipLevel = mip_index;
+                        write_barrier.subresourceRange.levelCount = 1;
+                        write_barrier.subresourceRange.baseArrayLayer = 0;
+                        write_barrier.subresourceRange.layerCount = 1;
+
+                        ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                                 0,
+                                                 0,
+                                                 nullptr,
+                                                 0,
+                                                 nullptr,
+                                                 1,
+                                                 &write_barrier);
+                    }
+
+                    ctx.dcb.bind_descriptors(m_depth_pyramid_sets[mip_index], 0, 1);
+
+                    uint32_t group_x = (width + 7) / 8;
+                    uint32_t group_y = (height + 7) / 8;
+
+                    ctx.dcb.dispatch(group_x, group_y, 1);
+
+                    {
+                        VkImageMemoryBarrier read_barrier{};
+                        read_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                        read_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                        read_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                        read_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+                        read_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                        read_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        read_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                        read_barrier.image = m_depth_pyramid.image;
+                        read_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                        read_barrier.subresourceRange.baseMipLevel = mip_index;
+                        read_barrier.subresourceRange.levelCount = 1;
+                        read_barrier.subresourceRange.baseArrayLayer = 0;
+                        read_barrier.subresourceRange.layerCount = 1;
+
+                        ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                                 0,
+                                                 0,
+                                                 nullptr,
+                                                 0,
+                                                 nullptr,
+                                                 1,
+                                                 &read_barrier);
+                    }
+
+                    width /= 2;
+                    height /= 2;
+
+                    ctx.dcb.end_label();
                 }
-
-                ctx.dcb.bind_descriptors(m_depth_pyramid_sets[mip_index], 0, 1);
-
-                uint32_t group_x = (width + 7) / 8;
-                uint32_t group_y = (height + 7) / 8;
-
-                ctx.dcb.dispatch(group_x, group_y, 1);
-
-                {
-                    VkImageMemoryBarrier read_barrier{};
-                    read_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    read_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                    read_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                    read_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    read_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    read_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    read_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                    read_barrier.image = m_depth_pyramid.image;
-                    read_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                    read_barrier.subresourceRange.baseMipLevel = mip_index;
-                    read_barrier.subresourceRange.levelCount = 1;
-                    read_barrier.subresourceRange.baseArrayLayer = 0;
-                    read_barrier.subresourceRange.layerCount = 1;
-
-                    ctx.dcb.pipeline_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                             0,
-                                             0,
-                                             nullptr,
-                                             0,
-                                             nullptr,
-                                             1,
-                                             &read_barrier);
-                }
-
-                width /= 2;
-                height /= 2;
             }
         }
+
+        ctx.dcb.end_label();
     }
 
-    ctx.dcb.transition_image(m_render_target.image,
-                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    {
+        ctx.dcb.begin_label("Final Blit", 0.9f, 0.6f, 0.2f);
 
-    ctx.dcb.transition_image(video_out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        ctx.dcb.transition_image(m_render_target.image,
+                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-    ctx.dcb.copy_image_to_image(m_render_target.image, video_out, draw_extent, device_extent);
+        ctx.dcb.transition_image(video_out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        ctx.dcb.copy_image_to_image(m_render_target.image, video_out, draw_extent, device_extent);
+
+        ctx.dcb.end_label();
+    }
+
+    ctx.dcb.end_label();
 
     render_performance_overlay();
 }

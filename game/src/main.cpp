@@ -202,7 +202,7 @@ public:
 
         m_camera = scene.add_camera(true);
 
-#if 1
+#if 0
         m_model = scene.add_model(resources.load<kynetic::Model>("assets/models/DragonAttenuation.glb"));
 #else
         m_model = scene.add_model(resources.load<kynetic::Model>("assets/models/bistro/Bistro.gltf"));

@@ -6,7 +6,6 @@
 
 namespace kynetic
 {
-
 class CommandBuffer
 {
     friend class Device;
@@ -78,7 +77,30 @@ public:
     void begin_query(VkQueryPool query_pool, uint32_t query, VkQueryControlFlags flags = 0) const;
     void end_query(VkQueryPool query_pool, uint32_t query) const;
 
+    void begin_label(const char* name, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f) const;
+    void end_label() const;
+    void insert_label(const char* name, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f) const;
+
     [[nodiscard]] VkCommandBuffer get_handle() const { return m_command_buffer; }
 };
 
+class ScopedDebugLabel
+{
+    const CommandBuffer& m_cmd;
+
+public:
+    ScopedDebugLabel(const CommandBuffer& cmd, const char* name, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f)
+        : m_cmd(cmd)
+    {
+        m_cmd.begin_label(name, r, g, b, a);
+    }
+
+    ~ScopedDebugLabel() { m_cmd.end_label(); }
+
+    ScopedDebugLabel(const ScopedDebugLabel&) = delete;
+    ScopedDebugLabel& operator=(const ScopedDebugLabel&) = delete;
+};
+
+#define GPU_SCOPE(cmd, name) ::kynetic::ScopedDebugLabel _gpu_scope_##__LINE__(cmd, name)
+#define GPU_SCOPE_COLOR(cmd, name, r, g, b) ::kynetic::ScopedDebugLabel _gpu_scope_##__LINE__(cmd, name, r, g, b)
 }  // namespace kynetic

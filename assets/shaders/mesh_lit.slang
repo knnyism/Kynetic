@@ -160,10 +160,10 @@ void amplification_main(uint group_id: SV_GroupID, uint group_thread_id: SV_Grou
 
 [shader("mesh")]
 [outputtopology("triangle")]
-[numthreads(128, 1, 1)]
+[numthreads(64, 1, 1)]
 void mesh_main(
-    OutputIndices<uint3, 126> triangles, 
-    OutputVertices<CoarseVertex, 64> vertices,
+    OutputIndices<uint3, 64> triangles, 
+    OutputVertices<CoarseVertex, 32> vertices,
     in payload MeshPayload mesh_payload,
     uint group_id: SV_GroupID,
     uint group_thread_id: SV_GroupThreadID)
@@ -226,15 +226,14 @@ void mesh_main(
         vertices[group_thread_id].material_index = instance.material_index;
     }
 
-    if (group_thread_id < meshlet.triangle_count)
-    {
-        uint triangle_offset = meshlet.triangle_offset + group_thread_id * 3;
-        triangles[group_thread_id] = uint3(
-            meshlet_triangles_data[triangle_offset + 0],
-            meshlet_triangles_data[triangle_offset + 1],
-            meshlet_triangles_data[triangle_offset + 2]
-        );
-    }
+    group_thread_id = min(group_thread_id, meshlet.triangle_count);
+
+    uint triangle_offset = meshlet.triangle_offset + group_thread_id * 3;
+    triangles[group_thread_id] = uint3(
+        meshlet_triangles_data[triangle_offset + 0],
+        meshlet_triangles_data[triangle_offset + 1],
+        meshlet_triangles_data[triangle_offset + 2]
+    );
 }
 
 struct Fragment
