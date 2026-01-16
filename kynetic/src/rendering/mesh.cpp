@@ -62,19 +62,17 @@ Mesh::Mesh(const std::filesystem::path& path,
     std::vector<uint32_t> meshlet_vertices;
     std::vector<uint8_t> meshlet_triangles;
 
-    std::vector<std::vector<int>> child_groups;
-
     uint32_t current_vertex_offset{0};
     uint32_t current_triangle_offset{0};
     uint32_t max_depth{0};
 
     clodBuild(config,
               mesh,
-              [&](clodGroup group, const clodCluster* clusters, size_t cluster_count) -> int
+              [&](const clodGroup& group, const clodCluster* clusters, size_t cluster_count) -> int
               {
                   int group_id = static_cast<int>(lod_groups.size());
 
-                  LODGroupData lod_group{};
+                  LODGroupData lod_group;
                   lod_group.center =
                       glm::vec3(group.simplified.center[0], group.simplified.center[1], group.simplified.center[2]);
                   lod_group.radius = group.simplified.radius;
