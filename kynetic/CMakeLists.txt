@@ -316,16 +316,6 @@ elseif (APPLE)
     target_compile_definitions(kynetic PUBLIC VK_USE_PLATFORM_MACOS_MVK)
 endif ()
 
-if (MSVC)
-    target_compile_options(kynetic PRIVATE /W4 /WX)
-else ()
-    
-endif ()
-target_compile_options(kynetic PRIVATE -Werror 
-            -Wno-missing-designated-field-initializers
-            -Wno-missing-field-initializers
-            -Wno-missing-braces)
-
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(kynetic PUBLIC DEBUG)
 endif ()
